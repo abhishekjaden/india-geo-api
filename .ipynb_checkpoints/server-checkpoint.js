@@ -19,22 +19,24 @@ const PLAN_LIMITS = {
 };
 
 // -------------------
-// DATABASE (NEON)
+// NEON DATABASE CONFIG ✅
 // -------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 // -------------------
-// ROOT
+// ROOT (PUBLIC)
 // -------------------
 app.get('/', (req, res) => {
-  res.send('India Geo API is running 🚀');
+  res.send('API is running 🚀');
 });
 
 // -------------------
-// AUTOCOMPLETE (FIXED + IMPROVED)
+// AUTOCOMPLETE (PUBLIC 🔥)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -45,20 +47,17 @@ app.get('/autocomplete', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `
-      SELECT 
-        v.name AS village,
-        sd.name AS subdistrict,
-        d.name AS district,
-        s.name AS state
-      FROM villages v
-      JOIN subdistricts sd ON v.subdistrict_id = sd.id
-      JOIN districts d ON sd.district_id = d.id
-      JOIN states s ON d.state_id = s.id
-      WHERE v.name ILIKE $1
-      LIMIT 10
-      `,
-      [`%${q}%`] // 🔥 FIXED (important)
+      `SELECT v.name AS village,
+              sd.name AS subdistrict,
+              d.name AS district,
+              s.name AS state
+       FROM villages v
+       JOIN subdistricts sd ON v.subdistrict_id = sd.id
+       JOIN districts d ON sd.district_id = d.id
+       JOIN states s ON d.state_id = s.id
+       WHERE v.name ILIKE $1
+       LIMIT 10`,
+      [`${q}%`]
     );
 
     res.json(result.rows);
@@ -92,6 +91,7 @@ app.use(async (req, res, next) => {
     const user = result.rows[0];
     const limit = PLAN_LIMITS[user.plan] || 1000;
 
+    // 🚫 RATE LIMIT CHECK
     if (user.requests_count >= limit) {
       return res.status(429).json({
         error: "Rate limit exceeded",
@@ -100,6 +100,7 @@ app.use(async (req, res, next) => {
       });
     }
 
+    // 🚀 INCREMENT USAGE
     await pool.query(
       "UPDATE api_keys SET requests_count = requests_count + 1 WHERE api_key = $1",
       [apiKey]
@@ -139,7 +140,9 @@ app.get('/districts', async (req, res) => {
       'SELECT * FROM districts WHERE state_id = $1 ORDER BY name',
       [state_id]
     );
+
     res.json(result.rows);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch districts" });
@@ -154,13 +157,15 @@ app.get('/subdistricts', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, district_id, name 
+      `SELECT id, district_id, name::text AS name 
        FROM subdistricts 
        WHERE district_id = $1 
        ORDER BY name`,
       [district_id]
     );
+
     res.json(result.rows);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch subdistricts" });
@@ -178,7 +183,9 @@ app.get('/villages', async (req, res) => {
       'SELECT * FROM villages WHERE subdistrict_id = $1 ORDER BY name',
       [subdistrict_id]
     );
+
     res.json(result.rows);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch villages" });
@@ -186,27 +193,24 @@ app.get('/villages', async (req, res) => {
 });
 
 // -------------------
-// SEARCH (EXTENDED)
+// SEARCH
 // -------------------
 app.get('/search', async (req, res) => {
   const { q } = req.query;
 
   try {
     const result = await pool.query(
-      `
-      SELECT 
-        v.name AS village,
-        sd.name AS subdistrict,
-        d.name AS district,
-        s.name AS state
-      FROM villages v
-      JOIN subdistricts sd ON v.subdistrict_id = sd.id
-      JOIN districts d ON sd.district_id = d.id
-      JOIN states s ON d.state_id = s.id
-      WHERE v.name ILIKE $1
-      LIMIT 20
-      `,
-      [`%${q}%`] // 🔥 FIXED
+      `SELECT v.name AS village,
+              sd.name AS subdistrict,
+              d.name AS district,
+              s.name AS state
+       FROM villages v
+       JOIN subdistricts sd ON v.subdistrict_id = sd.id
+       JOIN districts d ON sd.district_id = d.id
+       JOIN states s ON d.state_id = s.id
+       WHERE v.name ILIKE $1
+       LIMIT 20`,
+      [`${q}%`]
     );
 
     res.json(result.rows);
