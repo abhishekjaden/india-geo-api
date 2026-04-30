@@ -34,7 +34,7 @@ app.get('/', (req, res) => {
 });
 
 // -------------------
-// AUTOCOMPLETE (FIXED + IMPROVED)
+// AUTOCOMPLETE (FINAL VERSION)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -46,7 +46,7 @@ app.get('/autocomplete', async (req, res) => {
   try {
     const result = await pool.query(
       `
-      SELECT 
+      SELECT DISTINCT ON (v.name)
         v.name AS village,
         sd.name AS subdistrict,
         d.name AS district,
@@ -56,12 +56,18 @@ app.get('/autocomplete', async (req, res) => {
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
       WHERE v.name ILIKE $1
+      ORDER BY v.name
       LIMIT 10
       `,
-      [`%${q}%`] // 🔥 FIXED (important)
+      [`%${q}%`]
     );
 
-    res.json(result.rows);
+    res.json(
+      result.rows.map(r => ({
+        label: `${r.village}, ${r.district}, ${r.state}`,
+        value: r.village
+      }))
+    );
 
   } catch (err) {
     console.error("Autocomplete error:", err);
@@ -154,10 +160,12 @@ app.get('/subdistricts', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `SELECT id, district_id, name 
-       FROM subdistricts 
-       WHERE district_id = $1 
-       ORDER BY name`,
+      `
+      SELECT id, district_id, name
+      FROM subdistricts
+      WHERE district_id = $1
+      ORDER BY name
+      `,
       [district_id]
     );
     res.json(result.rows);
@@ -206,7 +214,7 @@ app.get('/search', async (req, res) => {
       WHERE v.name ILIKE $1
       LIMIT 20
       `,
-      [`%${q}%`] // 🔥 FIXED
+      [`%${q}%`]
     );
 
     res.json(result.rows);
