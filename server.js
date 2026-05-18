@@ -50,7 +50,7 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------
-// AUTOCOMPLETE (AI TRIGRAM VERSION)
+// AUTOCOMPLETE (FIXED AI VERSION)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -65,6 +65,7 @@ app.get('/autocomplete', async (req, res) => {
   }
 
   try {
+    // 🔥 MAIN AI QUERY
     const result = await pool.query(
       `
       SELECT DISTINCT ON (v.name)
@@ -77,19 +78,43 @@ app.get('/autocomplete', async (req, res) => {
       JOIN subdistricts sd ON v.subdistrict_id = sd.id
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
-      WHERE v.name % $1
+      WHERE similarity(v.name, $1) > 0.3
       ORDER BY v.name, score DESC
       LIMIT 10
       `,
       [q]
     );
 
-    const formatted = result.rows.map(r => ({
+    let rows = result.rows;
+
+    // 🔥 FALLBACK (important)
+    if (rows.length === 0) {
+      const fallback = await pool.query(
+        `
+        SELECT 
+          v.name AS village,
+          sd.name AS subdistrict,
+          d.name AS district,
+          s.name AS state
+        FROM villages v
+        JOIN subdistricts sd ON v.subdistrict_id = sd.id
+        JOIN districts d ON sd.district_id = d.id
+        JOIN states s ON d.state_id = s.id
+        WHERE v.name ILIKE $1
+        LIMIT 10
+        `,
+        [`%${q}%`]
+      );
+
+      rows = fallback.rows;
+    }
+
+    const formatted = rows.map(r => ({
       label: `${r.village}, ${r.district}, ${r.state}`,
       value: r.village
     }));
 
-    // 🔥 SAVE TO CACHE
+    // 🔥 SAVE CACHE
     cache.set(q, formatted);
 
     res.json(formatted);
@@ -171,7 +196,7 @@ app.get('/villages', async (req, res) => {
 });
 
 // -------------------
-// SEARCH (IMPROVED)
+// SEARCH
 // -------------------
 app.get('/search', async (req, res) => {
   const { q } = req.query;
