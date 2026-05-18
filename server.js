@@ -50,7 +50,7 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------
-// AUTOCOMPLETE (FIXED AI VERSION)
+// AUTOCOMPLETE (AI VERSION)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -65,31 +65,53 @@ app.get('/autocomplete', async (req, res) => {
   }
 
   try {
-    // 🔥 MAIN AI QUERY
-   const result = await pool.query(
-  `
-  SELECT 
-    v.name AS village,
-    sd.name AS subdistrict,
-    d.name AS district,
-    s.name AS state,
-    similarity(v.name, $1) AS score
-  FROM villages v
-  JOIN subdistricts sd ON v.subdistrict_id = sd.id
-  JOIN districts d ON sd.district_id = d.id
-  JOIN states s ON d.state_id = s.id
-  WHERE v.name % $1
-  ORDER BY 
-    similarity(v.name, $1) DESC,
-    LENGTH(v.name) ASC
-  LIMIT 10
-  `,
-  [q]
-);
+    // -------------------
+    // 🔥 AI CORRECTION LAYER
+    // -------------------
+    const corrections = {
+      "chnai": "chennai",
+      "chennaii": "chennai",
+      "bangalor": "bangalore",
+      "banglore": "bangalore",
+      "mumabi": "mumbai",
+      "delih": "delhi"
+    };
+
+    let searchQuery = q.toLowerCase().trim();
+
+    if (corrections[searchQuery]) {
+      searchQuery = corrections[searchQuery];
+    }
+
+    // -------------------
+    // 🔥 MAIN QUERY
+    // -------------------
+    const result = await pool.query(
+      `
+      SELECT 
+        v.name AS village,
+        sd.name AS subdistrict,
+        d.name AS district,
+        s.name AS state,
+        similarity(v.name, $1) AS score
+      FROM villages v
+      JOIN subdistricts sd ON v.subdistrict_id = sd.id
+      JOIN districts d ON sd.district_id = d.id
+      JOIN states s ON d.state_id = s.id
+      WHERE v.name % $1
+      ORDER BY 
+        similarity(v.name, $1) DESC,
+        LENGTH(v.name) ASC
+      LIMIT 10
+      `,
+      [searchQuery]
+    );
 
     let rows = result.rows;
 
-    // 🔥 FALLBACK (important)
+    // -------------------
+    // 🔥 FALLBACK
+    // -------------------
     if (rows.length === 0) {
       const fallback = await pool.query(
         `
@@ -105,7 +127,7 @@ app.get('/autocomplete', async (req, res) => {
         WHERE v.name ILIKE $1
         LIMIT 10
         `,
-        [`%${q}%`]
+        [`%${searchQuery}%`]
       );
 
       rows = fallback.rows;
@@ -194,38 +216,6 @@ app.get('/villages', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch villages" });
-  }
-});
-
-// -------------------
-// SEARCH
-// -------------------
-app.get('/search', async (req, res) => {
-  const { q } = req.query;
-
-  try {
-    const result = await pool.query(
-      `
-      SELECT 
-        v.name AS village,
-        sd.name AS subdistrict,
-        d.name AS district,
-        s.name AS state
-      FROM villages v
-      JOIN subdistricts sd ON v.subdistrict_id = sd.id
-      JOIN districts d ON sd.district_id = d.id
-      JOIN states s ON d.state_id = s.id
-      WHERE v.name % $1
-      ORDER BY similarity(v.name, $1) DESC
-      LIMIT 20
-      `,
-      [q]
-    );
-
-    res.json(result.rows);
-
-  } catch (err) {
-    res.status(500).json({ error: "Search failed" });
   }
 });
 
