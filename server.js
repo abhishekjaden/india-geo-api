@@ -25,7 +25,7 @@ app.use(limiter);
 const cache = new NodeCache({ stdTTL: 600 });
 
 // -------------------
-// DATABASE (NEON)
+// DATABASE
 // -------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -40,7 +40,7 @@ app.get('/', (req, res) => {
 });
 
 // -------------------
-// HEALTH CHECK
+// HEALTH
 // -------------------
 app.get('/health', (req, res) => {
   res.json({
@@ -50,7 +50,7 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------
-// AUTOCOMPLETE (AI VERSION)
+// AUTOCOMPLETE (FIXED)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -59,18 +59,17 @@ app.get('/autocomplete', async (req, res) => {
     return res.json([]);
   }
 
-  // 🔥 CACHE CHECK
+  // CACHE
   if (cache.has(q)) {
     return res.json(cache.get(q));
   }
 
   try {
     // -------------------
-    // 🔥 AI CORRECTION LAYER
+    // AI CORRECTION
     // -------------------
     const corrections = {
       "chnai": "chennai",
-      "chennaii": "chennai",
       "bangalor": "bangalore",
       "banglore": "bangalore",
       "mumabi": "mumbai",
@@ -78,13 +77,12 @@ app.get('/autocomplete', async (req, res) => {
     };
 
     let searchQuery = q.toLowerCase().trim();
-
     if (corrections[searchQuery]) {
       searchQuery = corrections[searchQuery];
     }
 
     // -------------------
-    // 🔥 MAIN QUERY
+    // 🔥 HYBRID QUERY (FIXED)
     // -------------------
     const result = await pool.query(
       `
@@ -98,47 +96,28 @@ app.get('/autocomplete', async (req, res) => {
       JOIN subdistricts sd ON v.subdistrict_id = sd.id
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
-      WHERE v.name % $1
+      WHERE 
+        v.name ILIKE $2
+        OR similarity(v.name, $1) > 0.2
       ORDER BY 
         similarity(v.name, $1) DESC,
-        LENGTH(v.name) ASC
+        v.name ASC
       LIMIT 10
       `,
-      [searchQuery]
+      [searchQuery, `%${searchQuery}%`]
     );
 
     let rows = result.rows;
 
     // -------------------
-    // 🔥 FALLBACK
+    // FORMAT
     // -------------------
-    if (rows.length === 0) {
-      const fallback = await pool.query(
-        `
-        SELECT 
-          v.name AS village,
-          sd.name AS subdistrict,
-          d.name AS district,
-          s.name AS state
-        FROM villages v
-        JOIN subdistricts sd ON v.subdistrict_id = sd.id
-        JOIN districts d ON sd.district_id = d.id
-        JOIN states s ON d.state_id = s.id
-        WHERE v.name ILIKE $1
-        LIMIT 10
-        `,
-        [`%${searchQuery}%`]
-      );
-
-      rows = fallback.rows;
-    }
-
     const formatted = rows.map(r => ({
       label: `${r.village}, ${r.district}, ${r.state}`,
       value: r.village
     }));
 
-    // 🔥 SAVE CACHE
+    // CACHE SAVE
     cache.set(q, formatted);
 
     res.json(formatted);
