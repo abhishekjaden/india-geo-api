@@ -66,24 +66,26 @@ app.get('/autocomplete', async (req, res) => {
 
   try {
     // 🔥 MAIN AI QUERY
-    const result = await pool.query(
-      `
-      SELECT DISTINCT ON (v.name)
-        v.name AS village,
-        sd.name AS subdistrict,
-        d.name AS district,
-        s.name AS state,
-        similarity(v.name, $1) AS score
-      FROM villages v
-      JOIN subdistricts sd ON v.subdistrict_id = sd.id
-      JOIN districts d ON sd.district_id = d.id
-      JOIN states s ON d.state_id = s.id
-      WHERE similarity(v.name, $1) > 0.3
-      ORDER BY v.name, score DESC
-      LIMIT 10
-      `,
-      [q]
-    );
+   const result = await pool.query(
+  `
+  SELECT 
+    v.name AS village,
+    sd.name AS subdistrict,
+    d.name AS district,
+    s.name AS state,
+    similarity(v.name, $1) AS score
+  FROM villages v
+  JOIN subdistricts sd ON v.subdistrict_id = sd.id
+  JOIN districts d ON sd.district_id = d.id
+  JOIN states s ON d.state_id = s.id
+  WHERE v.name % $1
+  ORDER BY 
+    similarity(v.name, $1) DESC,
+    LENGTH(v.name) ASC
+  LIMIT 10
+  `,
+  [q]
+);
 
     let rows = result.rows;
 
