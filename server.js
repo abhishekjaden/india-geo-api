@@ -50,7 +50,7 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------
-// AUTOCOMPLETE (FIXED)
+// AUTOCOMPLETE
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -77,12 +77,40 @@ app.get('/autocomplete', async (req, res) => {
     };
 
     let searchQuery = q.toLowerCase().trim();
+
     if (corrections[searchQuery]) {
       searchQuery = corrections[searchQuery];
     }
 
     // -------------------
-    // 🔥 HYBRID QUERY (FIXED)
+    // CITY OVERRIDE
+    // -------------------
+    const majorCities = {
+      "chennai": {
+        label: "Chennai, Chennai, TAMIL NADU",
+        value: "Chennai"
+      },
+      "bangalore": {
+        label: "Bangalore, Bangalore Urban, KARNATAKA",
+        value: "Bangalore"
+      },
+      "mumbai": {
+        label: "Mumbai, Mumbai, MAHARASHTRA",
+        value: "Mumbai"
+      },
+      "delhi": {
+        label: "New Delhi, Delhi, DELHI",
+        value: "Delhi"
+      }
+    };
+
+    // 🔥 EARLY RETURN
+    if (majorCities[searchQuery]) {
+      return res.json([majorCities[searchQuery]]);
+    }
+
+    // -------------------
+    // HYBRID SEARCH QUERY
     // -------------------
     const result = await pool.query(
       `
@@ -107,11 +135,8 @@ app.get('/autocomplete', async (req, res) => {
       [searchQuery, `%${searchQuery}%`]
     );
 
-    let rows = result.rows;
+    const rows = result.rows;
 
-    // -------------------
-    // FORMAT
-    // -------------------
     const formatted = rows.map(r => ({
       label: `${r.village}, ${r.district}, ${r.state}`,
       value: r.village
