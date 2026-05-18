@@ -3,20 +3,26 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const NodeCache = require('node-cache');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 // -------------------
-// PLAN LIMITS
+// RATE LIMITING
 // -------------------
-const PLAN_LIMITS = {
-  free: 1000,
-  premium: 10000,
-  pro: 100000,
-  unlimited: Infinity
-};
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+app.use(limiter);
+
+// -------------------
+// CACHE (10 mins)
+// -------------------
+const cache = new NodeCache({ stdTTL: 600 });
 
 // -------------------
 // DATABASE (NEON)
@@ -30,17 +36,32 @@ const pool = new Pool({
 // ROOT
 // -------------------
 app.get('/', (req, res) => {
-  res.send('India Geo API is running 🚀');
+  res.send('GeoSense AI API is running 🚀');
 });
 
 // -------------------
-// AUTOCOMPLETE (FINAL VERSION)
+// HEALTH CHECK
+// -------------------
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime()
+  });
+});
+
+// -------------------
+// AUTOCOMPLETE (AI TRIGRAM VERSION)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
 
   if (!q || q.length < 2) {
     return res.json([]);
+  }
+
+  // 🔥 CACHE CHECK
+  if (cache.has(q)) {
+    return res.json(cache.get(q));
   }
 
   try {
@@ -50,72 +71,32 @@ app.get('/autocomplete', async (req, res) => {
         v.name AS village,
         sd.name AS subdistrict,
         d.name AS district,
-        s.name AS state
+        s.name AS state,
+        similarity(v.name, $1) AS score
       FROM villages v
       JOIN subdistricts sd ON v.subdistrict_id = sd.id
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
-      WHERE v.name ILIKE $1
-      ORDER BY v.name
+      WHERE v.name % $1
+      ORDER BY v.name, score DESC
       LIMIT 10
       `,
-      [`%${q}%`]
+      [q]
     );
 
-    res.json(
-      result.rows.map(r => ({
-        label: `${r.village}, ${r.district}, ${r.state}`,
-        value: r.village
-      }))
-    );
+    const formatted = result.rows.map(r => ({
+      label: `${r.village}, ${r.district}, ${r.state}`,
+      value: r.village
+    }));
+
+    // 🔥 SAVE TO CACHE
+    cache.set(q, formatted);
+
+    res.json(formatted);
 
   } catch (err) {
     console.error("Autocomplete error:", err);
     res.status(500).json({ error: "Autocomplete failed" });
-  }
-});
-
-// -------------------
-// 🔐 API KEY MIDDLEWARE
-// -------------------
-app.use(async (req, res, next) => {
-  const apiKey = req.headers['x-api-key'];
-
-  if (!apiKey) {
-    return res.status(401).json({ error: "API key required" });
-  }
-
-  try {
-    const result = await pool.query(
-      "SELECT * FROM api_keys WHERE api_key = $1",
-      [apiKey]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(403).json({ error: "Invalid API key" });
-    }
-
-    const user = result.rows[0];
-    const limit = PLAN_LIMITS[user.plan] || 1000;
-
-    if (user.requests_count >= limit) {
-      return res.status(429).json({
-        error: "Rate limit exceeded",
-        plan: user.plan,
-        limit: limit
-      });
-    }
-
-    await pool.query(
-      "UPDATE api_keys SET requests_count = requests_count + 1 WHERE api_key = $1",
-      [apiKey]
-    );
-
-    next();
-
-  } catch (err) {
-    console.error("Auth error:", err);
-    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -129,7 +110,6 @@ app.get('/states', async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Failed to fetch states" });
   }
 });
@@ -147,7 +127,6 @@ app.get('/districts', async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Failed to fetch districts" });
   }
 });
@@ -170,7 +149,6 @@ app.get('/subdistricts', async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Failed to fetch subdistricts" });
   }
 });
@@ -188,13 +166,12 @@ app.get('/villages', async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Failed to fetch villages" });
   }
 });
 
 // -------------------
-// SEARCH (EXTENDED)
+// SEARCH (IMPROVED)
 // -------------------
 app.get('/search', async (req, res) => {
   const { q } = req.query;
@@ -211,16 +188,16 @@ app.get('/search', async (req, res) => {
       JOIN subdistricts sd ON v.subdistrict_id = sd.id
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
-      WHERE v.name ILIKE $1
+      WHERE v.name % $1
+      ORDER BY similarity(v.name, $1) DESC
       LIMIT 20
       `,
-      [`%${q}%`]
+      [q]
     );
 
     res.json(result.rows);
 
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Search failed" });
   }
 });

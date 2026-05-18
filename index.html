@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>India Geo API</title>
+</head>
+<body>
+
+<h2>Village Search</h2>
+<input type="text" id="search" placeholder="Search village..." />
+<ul id="results"></ul>
+
+<script>
+const input = document.getElementById('search');
+const results = document.getElementById('results');
+
+input.addEventListener('input', async () => {
+  const query = input.value;
+
+  if (query.length < 2) {
+    results.innerHTML = "";
+    return;
+  }
+
+  const res = await fetch(`https://india-geo-api-38gp.onrender.com/autocomplete?q=${query}`);
+  const data = await res.json();
+
+  results.innerHTML = data.map(item => `<li>${item.label}</li>`).join('');
+});
+</script>
+
+</body>
+</html>
