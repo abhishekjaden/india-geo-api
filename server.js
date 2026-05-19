@@ -138,9 +138,12 @@ app.get('/autocomplete', async (req, res) => {
     const searchQuery = processQuery(q);
 
     // 🔥 CITY OVERRIDE (fast path)
-    if (majorCities[searchQuery]) {
-      return res.json([majorCities[searchQuery]]);
-    }
+    // 🔥 SMART CITY OVERRIDE (multi-word support)
+for (const city in majorCities) {
+  if (searchQuery.includes(city)) {
+    return res.json([majorCities[city]]);
+  }
+}
 
     // -------------------
     // 🔥 SMART SEARCH QUERY
