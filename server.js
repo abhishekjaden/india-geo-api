@@ -50,15 +50,15 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------
-// 🔥 AI QUERY PROCESSOR (FINAL)
+// 🔥 AI QUERY PROCESSOR
 // -------------------
 function processQuery(input) {
   let q = input.toLowerCase().trim();
 
-  // remove extra spaces
+  // normalize spaces
   q = q.replace(/\s+/g, " ");
 
-  const parts = q.split(" ");
+  let parts = q.split(" ");
 
   // 🔥 state shortcuts
   const stateMap = {
@@ -68,7 +68,6 @@ function processQuery(input) {
     "dl": "delhi"
   };
 
-  // expand last word if state code
   if (parts.length > 1) {
     const last = parts[parts.length - 1];
     if (stateMap[last]) {
@@ -77,7 +76,7 @@ function processQuery(input) {
     }
   }
 
-  // 🔥 spell correction
+  // 🔥 spell correction (first word focus)
   const corrections = {
     "chnai": "chennai",
     "chennaii": "chennai",
@@ -89,8 +88,11 @@ function processQuery(input) {
     "mumabi": "mumbai"
   };
 
-  if (corrections[q]) {
-    q = corrections[q];
+  parts = q.split(" ");
+
+  if (corrections[parts[0]]) {
+    parts[0] = corrections[parts[0]];
+    q = parts.join(" ");
   }
 
   return q;
@@ -119,7 +121,7 @@ const majorCities = {
 };
 
 // -------------------
-// AUTOCOMPLETE (FINAL)
+// 🔥 AUTOCOMPLETE (FINAL)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -128,24 +130,26 @@ app.get('/autocomplete', async (req, res) => {
     return res.json([]);
   }
 
-  // 🔥 CACHE CHECK
-  if (cache.has(q)) {
-    return res.json(cache.get(q));
-  }
-
   try {
-    // 🔥 AI PROCESSING
+    // 🔥 STEP 1 — AI PROCESSING
     const searchQuery = processQuery(q);
 
-    // 🔥 CITY OVERRIDE (fast path)
-    // 🔥 SMART CITY OVERRIDE (multi-word support)
-for (const city in majorCities) {
-  if (searchQuery.includes(city)) {
-    return res.json([majorCities[city]]);
-  }
-}
+    console.log("Processed Query:", searchQuery);
+
+    // 🔥 STEP 2 — SMART CITY OVERRIDE (multi-word)
+    for (const city in majorCities) {
+      if (searchQuery.includes(city)) {
+        return res.json([majorCities[city]]);
+      }
+    }
+
+    // 🔥 STEP 3 — CACHE (after processing)
+    if (cache.has(searchQuery)) {
+      return res.json(cache.get(searchQuery));
+    }
+
     // -------------------
-    // 🔥 SMART SEARCH QUERY
+    // 🔥 DB QUERY
     // -------------------
     const result = await pool.query(
       `
@@ -174,7 +178,7 @@ for (const city in majorCities) {
 
     let rows = result.rows;
 
-    // 🔥 FALLBACK (if nothing good found)
+    // 🔥 FALLBACK
     if (rows.length === 0) {
       const fallback = await pool.query(
         `
@@ -196,14 +200,13 @@ for (const city in majorCities) {
       rows = fallback.rows;
     }
 
-    // 🔥 FORMAT RESPONSE
     const formatted = rows.map(r => ({
       label: `${r.village}, ${r.district}, ${r.state}`,
       value: r.village
     }));
 
-    // 🔥 SAVE CACHE
-    cache.set(q, formatted);
+    // 🔥 CACHE SAVE
+    cache.set(searchQuery, formatted);
 
     res.json(formatted);
 
