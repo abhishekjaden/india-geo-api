@@ -50,7 +50,76 @@ app.get('/health', (req, res) => {
 });
 
 // -------------------
-// AUTOCOMPLETE
+// 🔥 AI QUERY PROCESSOR (FINAL)
+// -------------------
+function processQuery(input) {
+  let q = input.toLowerCase().trim();
+
+  // remove extra spaces
+  q = q.replace(/\s+/g, " ");
+
+  const parts = q.split(" ");
+
+  // 🔥 state shortcuts
+  const stateMap = {
+    "tn": "tamil nadu",
+    "ka": "karnataka",
+    "mh": "maharashtra",
+    "dl": "delhi"
+  };
+
+  // expand last word if state code
+  if (parts.length > 1) {
+    const last = parts[parts.length - 1];
+    if (stateMap[last]) {
+      parts[parts.length - 1] = stateMap[last];
+      q = parts.join(" ");
+    }
+  }
+
+  // 🔥 spell correction
+  const corrections = {
+    "chnai": "chennai",
+    "chennaii": "chennai",
+    "banglore": "bangalore",
+    "bangalor": "bangalore",
+    "bangluru": "bangalore",
+    "delh": "delhi",
+    "delih": "delhi",
+    "mumabi": "mumbai"
+  };
+
+  if (corrections[q]) {
+    q = corrections[q];
+  }
+
+  return q;
+}
+
+// -------------------
+// 🔥 MAJOR CITY OVERRIDE
+// -------------------
+const majorCities = {
+  "chennai": {
+    label: "Chennai, Chennai, TAMIL NADU",
+    value: "Chennai"
+  },
+  "bangalore": {
+    label: "Bangalore, Bangalore Urban, KARNATAKA",
+    value: "Bangalore"
+  },
+  "mumbai": {
+    label: "Mumbai, Mumbai, MAHARASHTRA",
+    value: "Mumbai"
+  },
+  "delhi": {
+    label: "New Delhi, Delhi, DELHI",
+    value: "Delhi"
+  }
+};
+
+// -------------------
+// AUTOCOMPLETE (FINAL)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
@@ -59,62 +128,26 @@ app.get('/autocomplete', async (req, res) => {
     return res.json([]);
   }
 
-  // CACHE
+  // 🔥 CACHE CHECK
   if (cache.has(q)) {
     return res.json(cache.get(q));
   }
 
   try {
-    // -------------------
-    // AI CORRECTION
-    // -------------------
-    const corrections = {
-      "chnai": "chennai",
-      "bangalor": "bangalore",
-      "banglore": "bangalore",
-      "mumabi": "mumbai",
-      "delih": "delhi"
-    };
+    // 🔥 AI PROCESSING
+    const searchQuery = processQuery(q);
 
-    let searchQuery = q.toLowerCase().trim();
-
-    if (corrections[searchQuery]) {
-      searchQuery = corrections[searchQuery];
-    }
-
-    // -------------------
-    // CITY OVERRIDE
-    // -------------------
-    const majorCities = {
-      "chennai": {
-        label: "Chennai, Chennai, TAMIL NADU",
-        value: "Chennai"
-      },
-      "bangalore": {
-        label: "Bangalore, Bangalore Urban, KARNATAKA",
-        value: "Bangalore"
-      },
-      "mumbai": {
-        label: "Mumbai, Mumbai, MAHARASHTRA",
-        value: "Mumbai"
-      },
-      "delhi": {
-        label: "New Delhi, Delhi, DELHI",
-        value: "Delhi"
-      }
-    };
-
-    // 🔥 EARLY RETURN
+    // 🔥 CITY OVERRIDE (fast path)
     if (majorCities[searchQuery]) {
       return res.json([majorCities[searchQuery]]);
     }
 
     // -------------------
-    // HYBRID SEARCH QUERY
+    // 🔥 SMART SEARCH QUERY
     // -------------------
     const result = await pool.query(
       `
-      SELECT 
+      SELECT DISTINCT ON (v.name)
         v.name AS village,
         sd.name AS subdistrict,
         d.name AS district,
@@ -125,24 +158,49 @@ app.get('/autocomplete', async (req, res) => {
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
       WHERE 
-        v.name ILIKE $2
-        OR similarity(v.name, $1) > 0.2
+        similarity(v.name, $1) > 0.2
+        OR v.name ILIKE $2
+        OR d.name ILIKE $2
+        OR s.name ILIKE $2
       ORDER BY 
-        similarity(v.name, $1) DESC,
-        v.name ASC
+        v.name,
+        score DESC
       LIMIT 10
       `,
       [searchQuery, `%${searchQuery}%`]
     );
 
-    const rows = result.rows;
+    let rows = result.rows;
 
+    // 🔥 FALLBACK (if nothing good found)
+    if (rows.length === 0) {
+      const fallback = await pool.query(
+        `
+        SELECT 
+          v.name AS village,
+          sd.name AS subdistrict,
+          d.name AS district,
+          s.name AS state
+        FROM villages v
+        JOIN subdistricts sd ON v.subdistrict_id = sd.id
+        JOIN districts d ON sd.district_id = d.id
+        JOIN states s ON d.state_id = s.id
+        WHERE v.name ILIKE $1
+        LIMIT 10
+        `,
+        [`%${searchQuery}%`]
+      );
+
+      rows = fallback.rows;
+    }
+
+    // 🔥 FORMAT RESPONSE
     const formatted = rows.map(r => ({
       label: `${r.village}, ${r.district}, ${r.state}`,
       value: r.village
     }));
 
-    // CACHE SAVE
+    // 🔥 SAVE CACHE
     cache.set(q, formatted);
 
     res.json(formatted);
@@ -162,7 +220,7 @@ app.get('/states', async (req, res) => {
       'SELECT * FROM states ORDER BY name'
     );
     res.json(result.rows);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch states" });
   }
 });
@@ -179,7 +237,7 @@ app.get('/districts', async (req, res) => {
       [state_id]
     );
     res.json(result.rows);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch districts" });
   }
 });
@@ -201,7 +259,7 @@ app.get('/subdistricts', async (req, res) => {
       [district_id]
     );
     res.json(result.rows);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch subdistricts" });
   }
 });
@@ -218,7 +276,7 @@ app.get('/villages', async (req, res) => {
       [subdistrict_id]
     );
     res.json(result.rows);
-  } catch (err) {
+  } catch {
     res.status(500).json({ error: "Failed to fetch villages" });
   }
 });
