@@ -1,30 +1,114 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>India Geo API</title>
+  <meta charset="UTF-8">
+  <title>GeoSense AI</title>
+
+  <!-- Google Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: #0f172a;
+      color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .container {
+      text-align: center;
+      width: 400px;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    p {
+      color: #94a3b8;
+      margin-bottom: 30px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px;
+      border-radius: 8px;
+      border: none;
+      outline: none;
+      font-size: 16px;
+    }
+
+    .results {
+      margin-top: 10px;
+      text-align: left;
+      background: #1e293b;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .item {
+      padding: 10px;
+      border-bottom: 1px solid #334155;
+      cursor: pointer;
+    }
+
+    .item:hover {
+      background: #334155;
+    }
+
+    .loading {
+      margin-top: 10px;
+      color: #94a3b8;
+    }
+  </style>
 </head>
+
 <body>
 
-<h2>Village Search</h2>
-<input type="text" id="search" placeholder="Search village..." />
-<ul id="results"></ul>
+<div class="container">
+  <h1>GeoSense AI 🌍</h1>
+  <p>Intelligent Location Search for India</p>
+
+  <input id="search" placeholder="Search village, city..." />
+
+  <div class="loading" id="loading" style="display:none;">Loading...</div>
+  <div class="results" id="results"></div>
+</div>
 
 <script>
 const input = document.getElementById('search');
-const results = document.getElementById('results');
+const resultsDiv = document.getElementById('results');
+const loading = document.getElementById('loading');
 
 input.addEventListener('input', async () => {
   const query = input.value;
 
   if (query.length < 2) {
-    results.innerHTML = "";
+    resultsDiv.innerHTML = "";
     return;
   }
 
-  const res = await fetch(`https://india-geo-api-38gp.onrender.com/autocomplete?q=${query}`);
-  const data = await res.json();
+  loading.style.display = "block";
 
-  results.innerHTML = data.map(item => `<li>${item.label}</li>`).join('');
+  try {
+    const res = await fetch(`https://india-geo-api-38gp.onrender.com/autocomplete?q=${query}`);
+    const data = await res.json();
+
+    resultsDiv.innerHTML = data.map(item => `
+      <div class="item">${item.label}</div>
+    `).join('');
+
+  } catch (err) {
+    resultsDiv.innerHTML = "<div class='item'>Error loading data</div>";
+  }
+
+  loading.style.display = "none";
 });
 </script>
 
