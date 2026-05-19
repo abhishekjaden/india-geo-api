@@ -144,7 +144,6 @@ for (const city in majorCities) {
     return res.json([majorCities[city]]);
   }
 }
-
     // -------------------
     // 🔥 SMART SEARCH QUERY
     // -------------------
