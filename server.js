@@ -130,11 +130,18 @@ app.get('/autocomplete', async (req, res) => {
     return res.json([]);
   }
 
+
   try {
     // 🔥 STEP 1 — AI PROCESSING
     const searchQuery = processQuery(q);
 
-    console.log("Processed Query:", searchQuery);
+console.log("Processed Query:", searchQuery);
+
+// 🔥 LOG SEARCH QUERY
+pool.query(
+  'INSERT INTO search_logs (query) VALUES ($1)',
+  [searchQuery]
+).catch(err => console.error('Logging error:', err));
 
     // 🔥 STEP 2 — SMART CITY OVERRIDE (multi-word)
     for (const city in majorCities) {
@@ -289,6 +296,35 @@ app.get('/villages', async (req, res) => {
 // -------------------
 // START SERVER
 // -------------------
+
+// -------------------
+// SEARCH STATS
+// -------------------
+app.get('/stats', async (req, res) => {
+  try {
+    const totalResult = await pool.query(
+      'SELECT COUNT(*) FROM search_logs'
+    );
+
+    const topResult = await pool.query(`
+      SELECT query, COUNT(*) AS count
+      FROM search_logs
+      GROUP BY query
+      ORDER BY count DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      total_searches: parseInt(totalResult.rows[0].count),
+      top_searches: topResult.rows
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: 'Failed to fetch stats'
+    });
+  }
+});
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
