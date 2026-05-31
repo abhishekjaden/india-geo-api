@@ -371,6 +371,27 @@
     Data sourced from Census of India · Powered by PostgreSQL + Node.js
   </div>
 
+<!-- ANALYTICS -->
+<section id="analyticsCard" style="
+margin-top:40px;
+padding:20px;
+background:var(--navy-card);
+border:1px solid var(--navy-border);
+border-radius:14px;
+">
+  <h3 style="
+    font-family:'Syne',sans-serif;
+    margin-bottom:16px;
+    color:var(--saffron);
+  ">
+    GeoSense Analytics
+  </h3>
+
+  <div id="analyticsContent">
+    Loading analytics...
+  </div>
+</section>
+
   <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-tag">
@@ -559,6 +580,31 @@
       setTimeout(() => toast.classList.remove('show'), 2200);
     });
   }
+  async function loadAnalytics() {
+  try {
+    const res = await fetch(
+      'https://india-geo-api-38gp.onrender.com/stats'
+    );
+
+    const data = await res.json();
+
+    document.getElementById('analyticsContent').innerHTML = `
+      <div>Total Searches: <strong>${data.total_searches}</strong></div>
+      <br>
+      <div>Top Searches:</div>
+      <ul>
+        ${data.top_searches.map(item =>
+          `<li>${item.query} (${item.count})</li>`
+        ).join('')}
+      </ul>
+    `;
+  } catch (err) {
+    document.getElementById('analyticsContent').innerHTML =
+      'Analytics unavailable';
+  }
+}
+
+loadAnalytics();
 </script>
 </body>
 </html>
