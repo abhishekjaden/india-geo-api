@@ -5,8 +5,11 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const NodeCache = require('node-cache');
+const helmet = require('helmet');
 
 const app = express();
+app.set('trust proxy', 1);
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
@@ -29,7 +32,6 @@ const cache = new NodeCache({ stdTTL: 600 });
 // -------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
 });
 
 // -------------------
@@ -128,6 +130,10 @@ app.get('/autocomplete', async (req, res) => {
 
   if (!q || q.length < 2) {
     return res.json([]);
+  }
+
+  if (q.length > 60) {
+    return res.status(400).json({ error: "Query too long" });
   }
 
 
