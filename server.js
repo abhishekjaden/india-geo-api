@@ -171,7 +171,7 @@ pool.query(
     // -------------------
     const result = await pool.query(
       `
-      SELECT DISTINCT ON (v.name)
+      SELECT
         v.name AS village,
         sd.name AS subdistrict,
         d.name AS district,
@@ -181,14 +181,8 @@ pool.query(
       JOIN subdistricts sd ON v.subdistrict_id = sd.id
       JOIN districts d ON sd.district_id = d.id
       JOIN states s ON d.state_id = s.id
-      WHERE 
-        similarity(v.name, $1) > 0.2
-        OR v.name ILIKE $2
-        OR d.name ILIKE $2
-        OR s.name ILIKE $2
-      ORDER BY 
-        v.name,
-        score DESC
+      WHERE v.name % $1 OR v.name ILIKE $2
+      ORDER BY (v.name ILIKE $1 || '%') DESC, score DESC
       LIMIT 10
       `,
       [searchQuery, `%${searchQuery}%`]
