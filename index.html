@@ -97,7 +97,7 @@ input.addEventListener('input', async () => {
   loading.style.display = "block";
 
   try {
-    const res = await fetch(`https://india-geo-api-38gp.onrender.com/autocomplete?q=${query}`);
+    const res = await fetch(`https://->india-geo-api-1.onrender.com/autocomplete?q=${query}`);
     const data = await res.json();
 
     resultsDiv.innerHTML = data.map(item => `

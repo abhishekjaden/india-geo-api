@@ -444,7 +444,7 @@ border-radius:14px;
     lastQuery = query;
     showLoading();
     try {
-      const res = await fetch(`https://india-geo-api-38gp.onrender.com/autocomplete?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`https://india-geo-api-1.onrender.com/autocomplete?q=${encodeURIComponent(query)}`);
       const data = await res.json();
       allResults = data;
       buildStateFilters(data);
@@ -583,7 +583,7 @@ border-radius:14px;
   async function loadAnalytics() {
   try {
     const res = await fetch(
-      'https://india-geo-api-38gp.onrender.com/stats'
+      'https://india-geo-api-1.onrender.com/stats'
     );
 
     const data = await res.json();
