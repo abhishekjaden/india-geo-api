@@ -6,12 +6,17 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const NodeCache = require('node-cache');
 const helmet = require('helmet');
+const pino = require('pino');
+const pinoHttp = require('pino-http');
+
+const logger = pino();
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(pinoHttp({ logger }));
 
 // -------------------
 // RATE LIMITING
@@ -333,6 +338,19 @@ app.get('/stats', async (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, () => {
+  logger.info(`Server running on port ${PORT}`);
 });
+
+function shutdown(signal) {
+  logger.info(`${signal} received, shutting down gracefully`);
+  server.close(() => {
+    pool.end(() => {
+      logger.info('Closed server and database pool');
+      process.exit(0);
+    });
+  });
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
