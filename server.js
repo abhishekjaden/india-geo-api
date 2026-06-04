@@ -188,29 +188,7 @@ pool.query(
       [searchQuery, `%${searchQuery}%`]
     );
 
-    let rows = result.rows;
-
-    // 🔥 FALLBACK
-    if (rows.length === 0) {
-      const fallback = await pool.query(
-        `
-        SELECT 
-          v.name AS village,
-          sd.name AS subdistrict,
-          d.name AS district,
-          s.name AS state
-        FROM villages v
-        JOIN subdistricts sd ON v.subdistrict_id = sd.id
-        JOIN districts d ON sd.district_id = d.id
-        JOIN states s ON d.state_id = s.id
-        WHERE v.name ILIKE $1
-        LIMIT 10
-        `,
-        [`%${searchQuery}%`]
-      );
-
-      rows = fallback.rows;
-    }
+    const rows = result.rows;
 
     const formatted = rows.map(r => ({
       label: `${r.village}, ${r.district}, ${r.state}`,
