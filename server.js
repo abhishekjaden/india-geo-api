@@ -8,6 +8,7 @@ const NodeCache = require('node-cache');
 const helmet = require('helmet');
 const pino = require('pino');
 const pinoHttp = require('pino-http');
+const { answerQuestion } = require('./ask');
 
 const logger = pino();
 
@@ -203,6 +204,32 @@ pool.query(
   } catch (err) {
     console.error("Autocomplete error:", err);
     res.status(500).json({ error: "Autocomplete failed" });
+  }
+});
+
+// -------------------
+// 🔥 ASK — natural-language query endpoint
+// -------------------
+app.get('/ask', async (req, res) => {
+  const { q } = req.query;
+
+  if (!q || !q.trim()) {
+    return res.status(400).json({ error: "Provide a question via ?q=" });
+  }
+  if (q.length > 200) {
+    return res.status(400).json({ error: "Question too long" });
+  }
+
+  try {
+    const { answer, intent, supported } = await answerQuestion(q.trim(), pool);
+    res.json({ question: q.trim(), answer, intent, supported });
+  } catch (err) {
+    req.log.error({ err: err.message }, 'ask failed');
+    // Transient Gemini/network issue (e.g. a 503) — tell the caller to retry
+    // rather than leaking an error or crashing.
+    res.status(503).json({
+      error: "The AI service is temporarily unavailable. Please try again."
+    });
   }
 });
 
