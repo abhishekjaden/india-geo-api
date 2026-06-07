@@ -299,6 +299,62 @@
     }
     .tricolor div { flex: 1; }
 
+    /* ─── ASK (natural-language query) ─── */
+    .ask-section { margin-top: 44px; }
+
+    .ask-wrap { position: relative; display: flex; gap: 8px; }
+    .ask-icon {
+      position: absolute; left: 18px; top: 26px; transform: translateY(-50%);
+      color: var(--text-muted); pointer-events: none; transition: color 0.2s;
+    }
+    .ask-wrap:focus-within .ask-icon { color: var(--saffron); }
+
+    #askInput {
+      flex: 1; min-width: 0; padding: 18px 18px 18px 52px;
+      background: var(--navy-card); border: 1px solid var(--navy-border);
+      border-radius: 14px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 15px;
+      outline: none; transition: all 0.3s; caret-color: var(--saffron);
+    }
+    #askInput::placeholder { color: var(--text-muted); }
+    #askInput:focus {
+      border-color: rgba(255,107,26,0.5);
+      box-shadow: 0 0 0 3px rgba(255,107,26,0.1), 0 8px 32px rgba(0,0,0,0.4);
+      background: #162034;
+    }
+
+    .ask-btn {
+      flex-shrink: 0; padding: 0 24px;
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px;
+      letter-spacing: 0.02em; color: var(--navy);
+      background: linear-gradient(135deg, var(--saffron), #FFB347);
+      border: none; border-radius: 14px; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+    }
+    .ask-btn:hover { box-shadow: 0 6px 24px rgba(255,107,26,0.3); transform: translateY(-1px); }
+    .ask-btn:active { transform: translateY(0); }
+    .ask-btn:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+
+    .ask-answer {
+      margin-top: 14px; padding: 18px 20px;
+      background: var(--navy-card); border: 1px solid var(--navy-border);
+      border-radius: 14px; display: none;
+    }
+    .ask-answer.visible { display: block; }
+    .ask-answer .ask-text {
+      font-family: 'Syne', sans-serif; font-weight: 600; font-size: 16px;
+      color: var(--text); line-height: 1.5;
+    }
+    .ask-answer .ask-intent {
+      margin-top: 10px; font-size: 11px; color: var(--text-muted); letter-spacing: 0.03em;
+    }
+    .ask-answer .ask-intent:empty { display: none; }
+    .ask-answer.thinking .ask-text { color: var(--text-dim); }
+    .ask-answer.error { border-color: rgba(255,107,26,0.4); }
+    .ask-answer.error .ask-text { color: var(--saffron); font-size: 14px; }
+    .ask-dots::after { content: ''; animation: askDots 1.2s steps(4,end) infinite; }
+    @keyframes askDots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} }
+
   </style>
 </head>
 <body>
@@ -370,6 +426,22 @@
     Type at least 2 characters to search across India's villages.<br>
     Data sourced from Census of India · Powered by PostgreSQL + Node.js
   </div>
+
+  <!-- ASK (natural-language query) -->
+  <section class="ask-section">
+    <span class="search-label">// ask a question</span>
+    <div class="ask-wrap">
+      <svg class="ask-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/>
+      </svg>
+      <input type="text" id="askInput" placeholder="e.g. How many villages are in Kerala?" autocomplete="off" spellcheck="false"/>
+      <button id="askBtn" class="ask-btn">Ask</button>
+    </div>
+    <div class="ask-answer" id="askAnswer">
+      <div class="ask-text" id="askText"></div>
+      <div class="ask-intent" id="askIntent"></div>
+    </div>
+  </section>
 
 <!-- ANALYTICS -->
 <section id="analyticsCard" style="
@@ -603,6 +675,59 @@ border-radius:14px;
       'Analytics unavailable';
   }
 }
+
+  // ─── ASK (natural-language query) ───
+  const API = 'https://india-geo-api-1.onrender.com';
+  const askInput = document.getElementById('askInput');
+  const askBtn = document.getElementById('askBtn');
+  const askAnswer = document.getElementById('askAnswer');
+  const askText = document.getElementById('askText');
+  const askIntent = document.getElementById('askIntent');
+
+  askBtn.addEventListener('click', runAsk);
+  askInput.addEventListener('keydown', e => { if (e.key === 'Enter') runAsk(); });
+
+  function describeIntent(it) {
+    if (!it) return '';
+    if (it.action === 'top') {
+      const sup = it.order === 'least' ? 'fewest' : 'most';
+      return `the ${it.group_level} with the ${sup} ${it.target}`;
+    }
+    let s = `${it.action} of ${it.target}`;
+    if (it.filter_name) s += ` in ${it.filter_name}`;
+    if (it.name_prefix) s += ` starting with "${it.name_prefix}"`;
+    return s;
+  }
+
+  async function runAsk() {
+    const q = askInput.value.trim();
+    if (!q) return;
+
+    askBtn.disabled = true;
+    askAnswer.className = 'ask-answer visible thinking';
+    askText.innerHTML = 'Thinking<span class="ask-dots"></span>';
+    askIntent.textContent = '';
+
+    try {
+      const res = await fetch(`${API}/ask?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        askAnswer.className = 'ask-answer visible error';
+        askText.textContent = data.error || 'Something went wrong. Please try again.';
+        return;
+      }
+
+      askAnswer.className = 'ask-answer visible';
+      askText.textContent = data.answer;
+      askIntent.textContent = data.supported ? `interpreted as: ${describeIntent(data.intent)}` : '';
+    } catch (err) {
+      askAnswer.className = 'ask-answer visible error';
+      askText.textContent = 'Could not reach the API. Check your connection and try again.';
+    } finally {
+      askBtn.disabled = false;
+    }
+  }
 
 loadAnalytics();
 </script>
