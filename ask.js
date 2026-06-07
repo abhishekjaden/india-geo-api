@@ -124,16 +124,33 @@ function getAI() {
   return _aiPromise;
 }
 
+// Call Gemini for the intent, retrying once on a transient (5xx / rate-limit) error
+// so the occasional free-tier blip self-heals before the user ever sees it.
+async function generateIntent(ai, question, tries = 2) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `${SYSTEM_PROMPT}\n\nQuestion: ${question}`,
+        config: { responseMimeType: 'application/json', responseSchema: intentSchema },
+      });
+    } catch (err) {
+      const status = err && err.status;
+      const transient = status === undefined || status === 429 || (status >= 500 && status < 600);
+      if (i < tries - 1 && transient) {
+        await new Promise(r => setTimeout(r, 600));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 // Main entry point: question (string) + a pg Pool -> { answer, intent, supported }.
 // Throws on Gemini/network failure so the caller can decide the HTTP status.
 async function answerQuestion(question, pool) {
   const ai = await getAI();
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: `${SYSTEM_PROMPT}\n\nQuestion: ${question}`,
-    config: { responseMimeType: 'application/json', responseSchema: intentSchema },
-  });
+  const response = await generateIntent(ai, question);
 
   let intent;
   try {

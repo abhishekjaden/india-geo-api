@@ -106,27 +106,6 @@ function processQuery(input) {
   return q;
 }
 
-// -------------------
-// 🔥 MAJOR CITY OVERRIDE
-// -------------------
-const majorCities = {
-  "chennai": {
-    label: "Chennai, Chennai, TAMIL NADU",
-    value: "Chennai"
-  },
-  "bangalore": {
-    label: "Bangalore, Bangalore Urban, KARNATAKA",
-    value: "Bangalore"
-  },
-  "mumbai": {
-    label: "Mumbai, Mumbai, MAHARASHTRA",
-    value: "Mumbai"
-  },
-  "delhi": {
-    label: "New Delhi, Delhi, DELHI",
-    value: "Delhi"
-  }
-};
 
 // -------------------
 // 🔥 AUTOCOMPLETE (FINAL)
@@ -155,13 +134,7 @@ pool.query(
   [searchQuery]
 ).catch(err => console.error('Logging error:', err));
 
-    // 🔥 STEP 2 — SMART CITY OVERRIDE (multi-word)
-    for (const city in majorCities) {
-      if (searchQuery.includes(city)) {
-        return res.json([majorCities[city]]);
-      }
-    }
-
+    
     // 🔥 STEP 3 — CACHE (after processing)
     if (cache.has(searchQuery)) {
       return res.json(cache.get(searchQuery));
