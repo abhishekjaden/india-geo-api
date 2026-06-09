@@ -1,5 +1,4 @@
 require('dotenv').config();
-
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -9,16 +8,13 @@ const helmet = require('helmet');
 const pino = require('pino');
 const pinoHttp = require('pino-http');
 const { answerQuestion } = require('./ask');
-
 const logger = pino();
-
 const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(pinoHttp({ logger }));
-
 // -------------------
 // RATE LIMITING
 // -------------------
@@ -27,26 +23,22 @@ const limiter = rateLimit({
   max: 100
 });
 app.use(limiter);
-
 // -------------------
 // CACHE (10 mins)
 // -------------------
 const cache = new NodeCache({ stdTTL: 600 });
-
 // -------------------
 // DATABASE
 // -------------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
-
 // -------------------
 // ROOT
 // -------------------
 app.get('/', (req, res) => {
   res.send('GeoSense AI API is running 🚀');
 });
-
 // -------------------
 // HEALTH
 // -------------------
@@ -56,18 +48,14 @@ app.get('/health', (req, res) => {
     uptime: process.uptime()
   });
 });
-
 // -------------------
 // 🔥 AI QUERY PROCESSOR
 // -------------------
 function processQuery(input) {
   let q = input.toLowerCase().trim();
-
   // normalize spaces
   q = q.replace(/\s+/g, " ");
-
   let parts = q.split(" ");
-
   // 🔥 state shortcuts
   const stateMap = {
     "tn": "tamil nadu",
@@ -75,7 +63,6 @@ function processQuery(input) {
     "mh": "maharashtra",
     "dl": "delhi"
   };
-
   if (parts.length > 1) {
     const last = parts[parts.length - 1];
     if (stateMap[last]) {
@@ -83,7 +70,6 @@ function processQuery(input) {
       q = parts.join(" ");
     }
   }
-
   // 🔥 spell correction (first word focus)
   const corrections = {
     "chnai": "chennai",
@@ -95,49 +81,45 @@ function processQuery(input) {
     "delih": "delhi",
     "mumabi": "mumbai"
   };
-
   parts = q.split(" ");
-
   if (corrections[parts[0]]) {
     parts[0] = corrections[parts[0]];
     q = parts.join(" ");
   }
-
   return q;
 }
-
-
+// -------------------
+// 🔥 LOG A SEARCH
+// Only record substantive, result-bearing queries (>= 4 chars, > 0 results)
+// so analytics reflects real intent instead of keystroke fragments / typos.
+// -------------------
+function logSearch(query, resultCount) {
+  if (query.length < 4 || resultCount === 0) return;
+  pool.query(
+    'INSERT INTO search_logs (query) VALUES ($1)',
+    [query]
+  ).catch(err => console.error('Logging error:', err));
+}
 // -------------------
 // 🔥 AUTOCOMPLETE (FINAL)
 // -------------------
 app.get('/autocomplete', async (req, res) => {
   const { q } = req.query;
-
   if (!q || q.length < 2) {
     return res.json([]);
   }
-
   if (q.length > 60) {
     return res.status(400).json({ error: "Query too long" });
   }
-
-
   try {
     // 🔥 STEP 1 — AI PROCESSING
     const searchQuery = processQuery(q);
 
-console.log("Processed Query:", searchQuery);
-
-// 🔥 LOG SEARCH QUERY
-pool.query(
-  'INSERT INTO search_logs (query) VALUES ($1)',
-  [searchQuery]
-).catch(err => console.error('Logging error:', err));
-
-    
-    // 🔥 STEP 3 — CACHE (after processing)
+    // 🔥 STEP 2 — CACHE (after processing)
     if (cache.has(searchQuery)) {
-      return res.json(cache.get(searchQuery));
+      const cached = cache.get(searchQuery);
+      logSearch(searchQuery, cached.length);
+      return res.json(cached);
     }
 
     // -------------------
@@ -161,38 +143,31 @@ pool.query(
       `,
       [searchQuery, `%${searchQuery}%`]
     );
-
     const rows = result.rows;
-
     const formatted = rows.map(r => ({
-      label: `${r.village}, ${r.district}, ${r.state}`,
+      label: `${r.village}, ${r.subdistrict}, ${r.district}, ${r.state}`,
       value: r.village
     }));
-
     // 🔥 CACHE SAVE
     cache.set(searchQuery, formatted);
-
+    logSearch(searchQuery, formatted.length);
     res.json(formatted);
-
   } catch (err) {
     console.error("Autocomplete error:", err);
     res.status(500).json({ error: "Autocomplete failed" });
   }
 });
-
 // -------------------
 // 🔥 ASK — natural-language query endpoint
 // -------------------
 app.get('/ask', async (req, res) => {
   const { q } = req.query;
-
   if (!q || !q.trim()) {
     return res.status(400).json({ error: "Provide a question via ?q=" });
   }
   if (q.length > 200) {
     return res.status(400).json({ error: "Question too long" });
   }
-
   try {
     const { answer, intent, supported } = await answerQuestion(q.trim(), pool);
     res.json({ question: q.trim(), answer, intent, supported });
@@ -205,7 +180,6 @@ app.get('/ask', async (req, res) => {
     });
   }
 });
-
 // -------------------
 // STATES
 // -------------------
@@ -219,13 +193,11 @@ app.get('/states', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch states" });
   }
 });
-
 // -------------------
 // DISTRICTS
 // -------------------
 app.get('/districts', async (req, res) => {
   const { state_id } = req.query;
-
   try {
     const result = await pool.query(
       'SELECT * FROM districts WHERE state_id = $1 ORDER BY name',
@@ -236,13 +208,11 @@ app.get('/districts', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch districts" });
   }
 });
-
 // -------------------
 // SUBDISTRICTS
 // -------------------
 app.get('/subdistricts', async (req, res) => {
   const { district_id } = req.query;
-
   try {
     const result = await pool.query(
       `
@@ -258,13 +228,11 @@ app.get('/subdistricts', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch subdistricts" });
   }
 });
-
 // -------------------
 // VILLAGES
 // -------------------
 app.get('/villages', async (req, res) => {
   const { subdistrict_id } = req.query;
-
   try {
     const result = await pool.query(
       'SELECT * FROM villages WHERE subdistrict_id = $1 ORDER BY name',
@@ -275,11 +243,6 @@ app.get('/villages', async (req, res) => {
     res.status(500).json({ error: "Failed to fetch villages" });
   }
 });
-
-// -------------------
-// START SERVER
-// -------------------
-
 // -------------------
 // SEARCH STATS
 // -------------------
@@ -288,7 +251,6 @@ app.get('/stats', async (req, res) => {
     const totalResult = await pool.query(
       'SELECT COUNT(*) FROM search_logs'
     );
-
     const topResult = await pool.query(`
       SELECT query, COUNT(*) AS count
       FROM search_logs
@@ -296,7 +258,6 @@ app.get('/stats', async (req, res) => {
       ORDER BY count DESC
       LIMIT 10
     `);
-
     res.json({
       total_searches: parseInt(totalResult.rows[0].count),
       top_searches: topResult.rows
@@ -308,12 +269,13 @@ app.get('/stats', async (req, res) => {
     });
   }
 });
+// -------------------
+// START SERVER
+// -------------------
 const PORT = process.env.PORT || 3000;
-
 const server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
 });
-
 function shutdown(signal) {
   logger.info(`${signal} received, shutting down gracefully`);
   server.close(() => {
@@ -323,6 +285,5 @@ function shutdown(signal) {
     });
   });
 }
-
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
