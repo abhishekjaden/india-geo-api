@@ -355,6 +355,37 @@
     .ask-dots::after { content: ''; animation: askDots 1.2s steps(4,end) infinite; }
     @keyframes askDots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} }
 
+    /* ─── ANALYTICS ─── */
+    .analytics-section { margin-top: 44px; }
+    .analytics-card {
+      margin-top: 14px; padding: 22px;
+      background: var(--navy-card); border: 1px solid var(--navy-border);
+      border-radius: 14px;
+    }
+    .analytics-loading { color: var(--text-muted); font-size: 12px; }
+    .an-total { display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px; }
+    .an-total-num {
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 34px; line-height: 1;
+      background: linear-gradient(135deg, var(--saffron), #FFB347);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .an-total-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; }
+    .an-top-label { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 14px; }
+    .an-rows { display: flex; flex-direction: column; gap: 9px; }
+    .an-row { display: flex; align-items: center; gap: 12px; }
+    .an-q {
+      flex: 0 0 38%; font-size: 12px; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .an-bar { flex: 1; height: 8px; background: var(--navy-border); border-radius: 4px; overflow: hidden; }
+    .an-bar-fill {
+      display: block; height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, var(--saffron), #FFB347);
+      transition: width 0.6s ease;
+    }
+    .an-count { flex: 0 0 auto; min-width: 28px; text-align: right; font-size: 11px; color: var(--text-dim); }
+    .an-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 14px 0; }
+
   </style>
 </head>
 <body>
@@ -444,25 +475,12 @@
   </section>
 
 <!-- ANALYTICS -->
-<section id="analyticsCard" style="
-margin-top:40px;
-padding:20px;
-background:var(--navy-card);
-border:1px solid var(--navy-border);
-border-radius:14px;
-">
-  <h3 style="
-    font-family:'Syne',sans-serif;
-    margin-bottom:16px;
-    color:var(--saffron);
-  ">
-    GeoSense Analytics
-  </h3>
-
-  <div id="analyticsContent">
-    Loading analytics...
-  </div>
-</section>
+  <section class="analytics-section">
+    <span class="search-label">// analytics</span>
+    <div class="analytics-card">
+      <div id="analyticsContent" class="analytics-loading">Loading analytics…</div>
+    </div>
+  </section>
 
   <!-- FOOTER -->
   <footer class="footer">
@@ -652,29 +670,45 @@ border-radius:14px;
       setTimeout(() => toast.classList.remove('show'), 2200);
     });
   }
-  async function loadAnalytics() {
-  try {
-    const res = await fetch(
-      'https://india-geo-api-1.onrender.com/stats'
-    );
-
-    const data = await res.json();
-
-    document.getElementById('analyticsContent').innerHTML = `
-      <div>Total Searches: <strong>${data.total_searches}</strong></div>
-      <br>
-      <div>Top Searches:</div>
-      <ul>
-        ${data.top_searches.map(item =>
-          `<li>${item.query} (${item.count})</li>`
-        ).join('')}
-      </ul>
-    `;
-  } catch (err) {
-    document.getElementById('analyticsContent').innerHTML =
-      'Analytics unavailable';
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
   }
-}
+
+  async function loadAnalytics() {
+    const el = document.getElementById('analyticsContent');
+    try {
+      const res = await fetch(`${API}/stats`);
+      const data = await res.json();
+      const top = Array.isArray(data.top_searches) ? data.top_searches : [];
+      const max = top.length ? Math.max(...top.map(t => Number(t.count))) : 0;
+
+      const rows = top.length
+        ? top.map(t => {
+            const pct = max ? Math.round((Number(t.count) / max) * 100) : 0;
+            return `
+              <div class="an-row">
+                <span class="an-q">${escapeHtml(t.query)}</span>
+                <span class="an-bar"><span class="an-bar-fill" style="width:${pct}%"></span></span>
+                <span class="an-count">${Number(t.count)}</span>
+              </div>`;
+          }).join('')
+        : `<div class="an-empty">No searches yet — be the first to try one above.</div>`;
+
+      el.classList.remove('analytics-loading');
+      el.innerHTML = `
+        <div class="an-total">
+          <span class="an-total-num">${Number(data.total_searches || 0).toLocaleString('en-IN')}</span>
+          <span class="an-total-label">total searches</span>
+        </div>
+        <div class="an-top-label">Top searches</div>
+        <div class="an-rows">${rows}</div>`;
+    } catch (err) {
+      el.classList.remove('analytics-loading');
+      el.innerHTML = `<div class="an-empty">Analytics unavailable right now.</div>`;
+    }
+  }
 
   // ─── ASK (natural-language query) ───
   const API = 'https://india-geo-api-1.onrender.com';
