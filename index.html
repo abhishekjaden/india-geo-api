@@ -386,6 +386,36 @@
     .an-count { flex: 0 0 auto; min-width: 28px; text-align: right; font-size: 11px; color: var(--text-dim); }
     .an-empty { color: var(--text-muted); font-size: 12px; text-align: center; padding: 14px 0; }
 
+    /* ─── MOBILE ─── */
+    @media (max-width: 600px) {
+      .wrapper { padding: 40px 16px 80px; }
+      .header { margin-bottom: 40px; }
+      .subtitle { font-size: 12px; }
+
+      /* 4-across stats -> 2x2 grid with clean internal dividers */
+      .stats { display: grid; grid-template-columns: 1fr 1fr; margin: 28px 0 40px; }
+      .stat {
+        padding: 14px 16px;
+        border-right: 1px solid var(--navy-border);
+        border-bottom: 1px solid var(--navy-border);
+      }
+      .stat:nth-child(2n) { border-right: none; }
+      .stat:nth-child(n+3) { border-bottom: none; }
+      .stat-val { font-size: 18px; }
+
+      /* the Cmd-K hint is meaningless on touch — hide it and reclaim the space */
+      .search-shortcut { display: none; }
+      #search { padding-right: 18px; }
+
+      /* keep the Ask button compact so the input keeps room */
+      .ask-btn { padding: 0 18px; }
+      .ask-answer .ask-text { font-size: 15px; }
+
+      /* give the analytics query label a touch more room on narrow screens */
+      .an-q { flex-basis: 44%; }
+      .an-total-num { font-size: 30px; }
+    }
+
   </style>
 </head>
 <body>
