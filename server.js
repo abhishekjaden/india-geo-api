@@ -7,10 +7,26 @@ const NodeCache = require('node-cache');
 const helmet = require('helmet');
 const pino = require('pino');
 const pinoHttp = require('pino-http');
+const swaggerUi = require('swagger-ui-express');
 const { answerQuestion } = require('./ask');
+const openapiSpec = require('./openapi');
 const logger = pino();
 const app = express();
 app.set('trust proxy', 1);
+
+// -------------------
+// API DOCS (Swagger UI)
+// Mounted before the global helmet: Swagger UI needs a relaxed Content-Security-
+// Policy, so we scope a CSP-free helmet to /api-docs only and keep the strict
+// global helmet on every other route.
+// -------------------
+app.use(
+  '/api-docs',
+  helmet({ contentSecurityPolicy: false }),
+  swaggerUi.serve,
+  swaggerUi.setup(openapiSpec, { customSiteTitle: 'India Geo API — API Docs' })
+);
+
 app.use(helmet());
 app.use(cors());
 app.use(express.json());

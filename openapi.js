@@ -1,0 +1,199 @@
+// openapi.js — OpenAPI 3.0 spec for the India Geo API.
+// Served as interactive Swagger UI at /api-docs (see server.js).
+
+module.exports = {
+  openapi: '3.0.3',
+  info: {
+    title: 'India Geo API',
+    version: '1.0.0',
+    description:
+      "REST API for India's administrative geography — 580,398 villages across a " +
+      'state → district → subdistrict → village hierarchy, with trigram fuzzy ' +
+      'autocomplete and a natural-language query endpoint.',
+  },
+  servers: [
+    { url: 'https://india-geo-api-1.onrender.com', description: 'Production' },
+    { url: 'http://localhost:3000', description: 'Local development' },
+  ],
+  tags: [
+    { name: 'Search', description: 'Fuzzy and natural-language search' },
+    { name: 'Hierarchy', description: 'Browse the administrative hierarchy' },
+    { name: 'Meta', description: 'Health and analytics' },
+  ],
+  paths: {
+    '/health': {
+      get: {
+        tags: ['Meta'],
+        summary: 'Service health',
+        description: 'Returns service status and uptime in seconds.',
+        responses: {
+          200: {
+            description: 'Service is up',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'ok' },
+                    uptime: { type: 'number', example: 1234.5 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/autocomplete': {
+      get: {
+        tags: ['Search'],
+        summary: 'Fuzzy village search',
+        description:
+          'Trigram-based fuzzy search over ~580k village names. Requires at least ' +
+          '2 characters and rejects queries longer than 60 characters. Returns up ' +
+          'to 10 matches ranked by similarity.',
+        parameters: [
+          {
+            name: 'q',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', minLength: 2, maxLength: 60 },
+            example: 'mangalore',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Matching villages',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      label: {
+                        type: 'string',
+                        example: 'Mangalore, Tittakudi, Cuddalore, TAMIL NADU',
+                      },
+                      value: { type: 'string', example: 'Mangalore' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Query too long (over 60 characters)' },
+        },
+      },
+    },
+    '/ask': {
+      get: {
+        tags: ['Search'],
+        summary: 'Natural-language query',
+        description:
+          'Answers a plain-English question about the dataset. The model returns a ' +
+          'structured intent, which the server maps to safe parameterized SQL — the ' +
+          'model never writes SQL directly.',
+        parameters: [
+          {
+            name: 'q',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', maxLength: 200 },
+            example: 'How many villages are in Kerala?',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Answer with the interpreted intent',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    question: { type: 'string' },
+                    answer: { type: 'string', example: 'There are 1495 villages in Kerala.' },
+                    intent: { type: 'object' },
+                    supported: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Missing or too-long question' },
+          503: { description: 'AI service temporarily unavailable' },
+        },
+      },
+    },
+    '/states': {
+      get: {
+        tags: ['Hierarchy'],
+        summary: 'List states',
+        description: 'All states and union territories.',
+        responses: { 200: { description: 'List of states' } },
+      },
+    },
+    '/districts': {
+      get: {
+        tags: ['Hierarchy'],
+        summary: 'List districts in a state',
+        parameters: [
+          { name: 'state_id', in: 'query', required: true, schema: { type: 'integer' }, example: 1 },
+        ],
+        responses: { 200: { description: 'Districts in the given state' } },
+      },
+    },
+    '/subdistricts': {
+      get: {
+        tags: ['Hierarchy'],
+        summary: 'List subdistricts in a district',
+        parameters: [
+          { name: 'district_id', in: 'query', required: true, schema: { type: 'integer' } },
+        ],
+        responses: { 200: { description: 'Subdistricts in the given district' } },
+      },
+    },
+    '/villages': {
+      get: {
+        tags: ['Hierarchy'],
+        summary: 'List villages in a subdistrict',
+        parameters: [
+          { name: 'subdistrict_id', in: 'query', required: true, schema: { type: 'integer' } },
+        ],
+        responses: { 200: { description: 'Villages in the given subdistrict' } },
+      },
+    },
+    '/stats': {
+      get: {
+        tags: ['Meta'],
+        summary: 'Search analytics',
+        description: 'Total search count and the most frequent search queries.',
+        responses: {
+          200: {
+            description: 'Analytics',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    total_searches: { type: 'integer', example: 1284 },
+                    top_searches: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          query: { type: 'string' },
+                          count: { type: 'integer' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
