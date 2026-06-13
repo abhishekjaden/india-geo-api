@@ -289,17 +289,25 @@ app.get('/stats', async (req, res) => {
 // START SERVER
 // -------------------
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-});
-function shutdown(signal) {
-  logger.info(`${signal} received, shutting down gracefully`);
-  server.close(() => {
-    pool.end(() => {
-      logger.info('Closed server and database pool');
-      process.exit(0);
-    });
+
+// Only start the HTTP server when run directly (e.g. `node server.js`).
+// When imported by the test suite, we just export `app` so supertest can
+// drive it without binding a port.
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    logger.info(`Server running on port ${PORT}`);
   });
+  const shutdown = (signal) => {
+    logger.info(`${signal} received, shutting down gracefully`);
+    server.close(() => {
+      pool.end(() => {
+        logger.info('Closed server and database pool');
+        process.exit(0);
+      });
+    });
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+
+module.exports = app;
