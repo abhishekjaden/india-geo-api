@@ -125,6 +125,55 @@ module.exports = {
         },
       },
     },
+    '/parse-address': {
+      post: {
+        tags: ['Search'],
+        summary: 'AI address parser / normalizer',
+        description:
+          'Extracts the administrative components from a messy free-text Indian ' +
+          'address, then validates each against the real database top-down through ' +
+          'the hierarchy. Every returned field is verified against real data.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['address'],
+                properties: {
+                  address: {
+                    type: 'string',
+                    maxLength: 500,
+                    example: 'ramesh kumar, near temple, tittakudi, cuddalore dist tamilnadu',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Parsed and verified address',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    input: { type: 'string' },
+                    extracted: { type: 'object', description: 'Raw components from the model' },
+                    verified: { type: 'object', description: 'Canonical names matched in the DB (or null)' },
+                    scores: { type: 'object', description: 'Trigram similarity per matched level' },
+                    complete: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Missing or too-long address' },
+          503: { description: 'Parser temporarily unavailable' },
+        },
+      },
+    },
     '/states': {
       get: {
         tags: ['Hierarchy'],

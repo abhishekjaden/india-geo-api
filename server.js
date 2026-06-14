@@ -9,6 +9,7 @@ const pino = require('pino');
 const pinoHttp = require('pino-http');
 const swaggerUi = require('swagger-ui-express');
 const { answerQuestion } = require('./ask');
+const { parseAddress } = require('./parse-address');
 const openapiSpec = require('./openapi');
 const logger = pino();
 const app = express();
@@ -193,6 +194,27 @@ app.get('/ask', async (req, res) => {
     // rather than leaking an error or crashing.
     res.status(503).json({
       error: "The AI service is temporarily unavailable. Please try again."
+    });
+  }
+});
+// -------------------
+// 🔥 PARSE-ADDRESS — AI address parser / normalizer
+// -------------------
+app.post('/parse-address', async (req, res) => {
+  const { address } = req.body || {};
+  if (!address || !address.trim()) {
+    return res.status(400).json({ error: "Provide an address in the JSON body as { address }" });
+  }
+  if (address.length > 500) {
+    return res.status(400).json({ error: "Address too long" });
+  }
+  try {
+    const result = await parseAddress(address.trim(), pool);
+    res.json(result);
+  } catch (err) {
+    req.log.error({ err: err.message }, 'parse-address failed');
+    res.status(503).json({
+      error: "The address parser is temporarily unavailable. Please try again."
     });
   }
 });
