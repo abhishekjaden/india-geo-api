@@ -74,6 +74,29 @@ async function matchOne(pool, table, name, parentCol, parentId) {
   return { id: rows[0].id, name: rows[0].name, score: Number(rows[0].score) };
 }
 
+// Villages are matched scoped to a subdistrict if we have one, else scoped to the
+// district (via join). Never matched fully unscoped — across 580k rows an unscoped
+// match would routinely return a same-named village from the wrong region.
+async function matchVillage(pool, name, subdistrictId, districtId) {
+  if (!name || !name.trim()) return null;
+  if (subdistrictId != null) {
+    return matchOne(pool, 'villages', name, 'subdistrict_id', subdistrictId);
+  }
+  if (districtId != null) {
+    const { rows } = await pool.query(
+      `SELECT v.id, v.name, similarity(v.name, $1) AS score
+       FROM villages v
+       JOIN subdistricts sd ON v.subdistrict_id = sd.id
+       WHERE v.name % $1 AND sd.district_id = $2
+       ORDER BY score DESC LIMIT 1`,
+      [name.trim(), districtId]
+    );
+    if (!rows.length) return null;
+    return { id: rows[0].id, name: rows[0].name, score: Number(rows[0].score) };
+  }
+  return null;
+}
+
 async function parseAddress(address, pool) {
   const ai = await getAI();
   const response = await extractComponents(ai, address);
@@ -87,20 +110,34 @@ async function parseAddress(address, pool) {
     throw e;
   }
 
-  // Walk the hierarchy top-down; each level is scoped by the matched parent so
-  // a "Mangalore" in the wrong district can't slip through.
+  // Walk the hierarchy top-down. Each level is scoped by its matched parent, so a
+  // same-named place in the wrong region can't slip through.
   const state = await matchOne(pool, 'states', extracted.state, null, null);
   const district = await matchOne(
     pool, 'districts', extracted.district,
     state ? 'state_id' : null, state ? state.id : null
   );
-  const subdistrict = await matchOne(
-    pool, 'subdistricts', extracted.subdistrict,
-    district ? 'district_id' : null, district ? district.id : null
-  );
-  const village = await matchOne(
-    pool, 'villages', extracted.village,
-    subdistrict ? 'subdistrict_id' : null, subdistrict ? subdistrict.id : null
+
+  // Subdistrict: addresses often label a subdistrict (taluk/tehsil/mandal) as just
+  // "the place", so if the subdistrict slot is empty we try the village-slot token
+  // here first. Only matched within the district.
+  const sdName =
+    extracted.subdistrict && extracted.subdistrict.trim()
+      ? extracted.subdistrict
+      : extracted.village;
+  const subdistrict = district
+    ? await matchOne(pool, 'subdistricts', sdName, 'district_id', district.id)
+    : null;
+
+  // Village: don't reuse a token that was already consumed as the subdistrict.
+  // Scoped to the subdistrict if we have one, otherwise to the district.
+  let villageName = extracted.village;
+  if (subdistrict && sdName === extracted.village) villageName = '';
+  const village = await matchVillage(
+    pool,
+    villageName,
+    subdistrict ? subdistrict.id : null,
+    district ? district.id : null
   );
 
   const levels = { state, district, subdistrict, village };
