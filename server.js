@@ -1,3 +1,5 @@
+// Load Sentry before anything else (no-op unless SENTRY_DSN is set).
+require('./instrument.js');
 require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
@@ -8,6 +10,7 @@ const helmet = require('helmet');
 const pino = require('pino');
 const pinoHttp = require('pino-http');
 const swaggerUi = require('swagger-ui-express');
+const Sentry = require('@sentry/node');
 const { answerQuestion } = require('./ask');
 const { parseAddress } = require('./parse-address');
 const openapiSpec = require('./openapi');
@@ -64,6 +67,13 @@ app.get('/health', (req, res) => {
     status: 'ok',
     uptime: process.uptime()
   });
+});
+// -------------------
+// DEBUG — deliberately throws, to verify Sentry is capturing errors.
+// (Safe to remove once monitoring is confirmed.)
+// -------------------
+app.get('/debug-sentry', () => {
+  throw new Error('Sentry test error — monitoring is working.');
 });
 // -------------------
 // 🔥 AI QUERY PROCESSOR
@@ -170,6 +180,7 @@ app.get('/autocomplete', async (req, res) => {
     logSearch(searchQuery, formatted.length);
     res.json(formatted);
   } catch (err) {
+    Sentry.captureException(err);
     console.error("Autocomplete error:", err);
     res.status(500).json({ error: "Autocomplete failed" });
   }
@@ -189,6 +200,7 @@ app.get('/ask', async (req, res) => {
     const { answer, intent, supported } = await answerQuestion(q.trim(), pool);
     res.json({ question: q.trim(), answer, intent, supported });
   } catch (err) {
+    Sentry.captureException(err);
     req.log.error({ err: err.message }, 'ask failed');
     // Transient Gemini/network issue (e.g. a 503) — tell the caller to retry
     // rather than leaking an error or crashing.
@@ -212,6 +224,7 @@ app.post('/parse-address', async (req, res) => {
     const result = await parseAddress(address.trim(), pool);
     res.json(result);
   } catch (err) {
+    Sentry.captureException(err);
     req.log.error({ err: err.message }, 'parse-address failed');
     res.status(503).json({
       error: "The address parser is temporarily unavailable. Please try again."
@@ -307,6 +320,11 @@ app.get('/stats', async (req, res) => {
     });
   }
 });
+// -------------------
+// SENTRY ERROR HANDLER — must be after all routes, before starting the server.
+// No-op unless SENTRY_DSN is configured.
+// -------------------
+Sentry.setupExpressErrorHandler(app);
 // -------------------
 // START SERVER
 // -------------------
