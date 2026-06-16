@@ -69,13 +69,6 @@ app.get('/health', (req, res) => {
   });
 });
 // -------------------
-// DEBUG — deliberately throws, to verify Sentry is capturing errors.
-// (Safe to remove once monitoring is confirmed.)
-// -------------------
-app.get('/debug-sentry', () => {
-  throw new Error('Sentry test error — monitoring is working.');
-});
-// -------------------
 // 🔥 AI QUERY PROCESSOR
 // -------------------
 function processQuery(input) {
