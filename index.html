@@ -355,6 +355,59 @@
     .ask-dots::after { content: ''; animation: askDots 1.2s steps(4,end) infinite; }
     @keyframes askDots { 0%{content:''} 25%{content:'.'} 50%{content:'..'} 75%{content:'...'} }
 
+    /* ─── PARSE ADDRESS ─── */
+    .addr-section { margin-top: 44px; }
+    .addr-wrap { display: flex; gap: 8px; align-items: stretch; }
+    #addrInput {
+      flex: 1; min-width: 0; resize: vertical; min-height: 58px;
+      padding: 16px 18px;
+      background: var(--navy-card); border: 1px solid var(--navy-border);
+      border-radius: 14px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 14px; line-height: 1.5;
+      outline: none; transition: all 0.3s; caret-color: var(--saffron);
+    }
+    #addrInput::placeholder { color: var(--text-muted); }
+    #addrInput:focus {
+      border-color: rgba(255,107,26,0.5);
+      box-shadow: 0 0 0 3px rgba(255,107,26,0.1), 0 8px 32px rgba(0,0,0,0.4);
+      background: #162034;
+    }
+    .addr-btn {
+      flex-shrink: 0; padding: 0 24px;
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px;
+      letter-spacing: 0.02em; color: var(--navy);
+      background: linear-gradient(135deg, var(--saffron), #FFB347);
+      border: none; border-radius: 14px; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+    }
+    .addr-btn:hover { box-shadow: 0 6px 24px rgba(255,107,26,0.3); transform: translateY(-1px); }
+    .addr-btn:active { transform: translateY(0); }
+    .addr-btn:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+
+    .addr-result { margin-top: 14px; }
+    .addr-badge {
+      display: inline-block; margin-bottom: 12px; padding: 4px 12px;
+      border-radius: 999px; font-size: 11px; font-weight: 700;
+      font-family: 'Syne', sans-serif; letter-spacing: 0.04em;
+    }
+    .addr-badge.ok { background: rgba(46,204,113,0.15); color: #2ecc71; }
+    .addr-badge.partial { background: rgba(255,179,71,0.15); color: #FFB347; }
+    .addr-chain { display: flex; flex-direction: column; gap: 8px; }
+    .addr-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 16px; background: var(--navy-card);
+      border: 1px solid var(--navy-border); border-radius: 12px;
+    }
+    .addr-level {
+      flex: 0 0 90px; font-size: 10px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--text-muted);
+    }
+    .addr-value { flex: 1; font-size: 14px; color: var(--text); }
+    .addr-value.miss { color: var(--text-muted); font-style: italic; }
+    .addr-score { flex: 0 0 auto; font-size: 11px; color: var(--text-dim); }
+    .addr-note { margin-top: 12px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+    .addr-empty, .addr-loading { color: var(--text-muted); font-size: 12px; }
+
     /* ─── ANALYTICS ─── */
     .analytics-section { margin-top: 44px; }
     .analytics-card {
@@ -410,6 +463,10 @@
       /* keep the Ask button compact so the input keeps room */
       .ask-btn { padding: 0 18px; }
       .ask-answer .ask-text { font-size: 15px; }
+
+      /* same compacting for the address Parse button + tighter result labels */
+      .addr-btn { padding: 0 18px; }
+      .addr-level { flex-basis: 76px; }
 
       /* give the analytics query label a touch more room on narrow screens */
       .an-q { flex-basis: 44%; }
@@ -502,6 +559,16 @@
       <div class="ask-text" id="askText"></div>
       <div class="ask-intent" id="askIntent"></div>
     </div>
+  </section>
+
+  <!-- PARSE ADDRESS -->
+  <section class="addr-section">
+    <span class="search-label">// parse address</span>
+    <div class="addr-wrap">
+      <textarea id="addrInput" rows="2" spellcheck="false" placeholder="Paste a messy address — e.g. ramesh kumar, near temple, tittakudi, cuddalore dist tamilnadu"></textarea>
+      <button id="addrBtn" class="addr-btn">Parse</button>
+    </div>
+    <div class="addr-result" id="addrResult"></div>
   </section>
 
 <!-- ANALYTICS -->
@@ -790,6 +857,63 @@
       askText.textContent = 'Could not reach the API. Check your connection and try again.';
     } finally {
       askBtn.disabled = false;
+    }
+  }
+
+  // ─── PARSE ADDRESS ───
+  const addrInput = document.getElementById('addrInput');
+  const addrBtn = document.getElementById('addrBtn');
+  const addrResult = document.getElementById('addrResult');
+
+  addrBtn.addEventListener('click', runParse);
+  addrInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runParse();
+  });
+
+  function renderParse(data) {
+    const v = data.verified || {};
+    const s = data.scores || {};
+    const levels = [
+      ['State', v.state, s.state],
+      ['District', v.district, s.district],
+      ['Subdistrict', v.subdistrict, s.subdistrict],
+      ['Village', v.village, s.village],
+    ];
+    const badge = data.complete
+      ? '<span class="addr-badge ok">\u2713 Fully resolved</span>'
+      : '<span class="addr-badge partial">Partially resolved</span>';
+    const rows = levels.map(([label, val, score]) => `
+      <div class="addr-row">
+        <span class="addr-level">${label}</span>
+        <span class="addr-value${val ? '' : ' miss'}">${val ? escapeHtml(val) : 'not found'}</span>
+        ${val && score != null ? `<span class="addr-score">${Math.round(score * 100)}% match</span>` : ''}
+      </div>`).join('');
+    addrResult.innerHTML = badge +
+      '<div class="addr-chain">' + rows + '</div>' +
+      '<div class="addr-note">Every field is verified against the real database \u2014 unmatched parts are shown as "not found" rather than guessed.</div>';
+  }
+
+  async function runParse() {
+    const address = addrInput.value.trim();
+    if (!address) return;
+    addrBtn.disabled = true;
+    addrResult.innerHTML = '<div class="addr-loading">Parsing\u2026</div>';
+    try {
+      const res = await fetch(`${API}/parse-address`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        addrResult.innerHTML = `<div class="addr-empty">${escapeHtml(data.error || 'Something went wrong. Please try again.')}</div>`;
+        return;
+      }
+      renderParse(data);
+    } catch (err) {
+      addrResult.innerHTML = '<div class="addr-empty">Could not reach the API. Check your connection and try again.</div>';
+    } finally {
+      addrBtn.disabled = false;
     }
   }
 
