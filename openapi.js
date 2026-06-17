@@ -174,6 +174,61 @@ module.exports = {
         },
       },
     },
+'/reverse-geocode': {
+      get: {
+        tags: ['Search'],
+        summary: 'Reverse geocode a coordinate',
+        description:
+          'Given a latitude/longitude, returns the Indian district and state whose ' +
+          'boundary contains the point — exact point-in-polygon via PostGIS over a ' +
+          'GiST spatial index. For a point outside every boundary (e.g. offshore), ' +
+          'returns the nearest district with "exact": false. District boundaries are ' +
+          '2011 census vintage, so post-2011 splits and Telangana are not separated out.',
+        parameters: [
+          {
+            name: 'lat',
+            in: 'query',
+            required: true,
+            schema: { type: 'number', minimum: -90, maximum: 90 },
+            example: 13.0827,
+          },
+          {
+            name: 'lng',
+            in: 'query',
+            required: true,
+            schema: { type: 'number', minimum: -180, maximum: 180 },
+            example: 80.2707,
+          },
+        ],
+        responses: {
+          200: {
+            description: 'District and state for the point',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number', example: 13.0827 },
+                    lng: { type: 'number', example: 80.2707 },
+                    district: { type: 'string', example: 'Chennai' },
+                    state: { type: 'string', example: 'Tamil Nadu' },
+                    exact: {
+                      type: 'boolean',
+                      description:
+                        'true if the point falls inside a district polygon; ' +
+                        'false if the nearest district was returned instead',
+                      example: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Missing or out-of-range coordinates' },
+          404: { description: 'No district found' },
+        },
+      },
+    },
     '/states': {
       get: {
         tags: ['Hierarchy'],
