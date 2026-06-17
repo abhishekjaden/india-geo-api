@@ -30,6 +30,16 @@ test('GET /autocomplete with fewer than 2 chars returns an empty array', async (
   assert.deepStrictEqual(res.body, []);
 });
 
+test('GET /reverse-geocode with no params returns 400', async () => {
+  const res = await request(app).get('/reverse-geocode');
+  assert.strictEqual(res.statusCode, 400);
+});
+
+test('GET /reverse-geocode with out-of-range lat returns 400', async () => {
+  const res = await request(app).get('/reverse-geocode?lat=200&lng=80');
+  assert.strictEqual(res.statusCode, 400);
+});
+
 test('GET /autocomplete with an overlong query returns 400', async () => {
   const res = await request(app).get('/autocomplete').query({ q: 'a'.repeat(61) });
   assert.strictEqual(res.status, 400);

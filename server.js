@@ -314,6 +314,55 @@ app.get('/stats', async (req, res) => {
   }
 });
 // -------------------
+// 🌍 REVERSE GEOCODE — point (lat,lng) -> district + state
+// Exact point-in-polygon via PostGIS ST_Contains over the GiST index.
+// Falls back to the nearest district (KNN <->) for points just outside
+// any boundary (e.g. offshore / border gaps), flagged exact:false.
+// -------------------
+app.get('/reverse-geocode', async (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lng = parseFloat(req.query.lng);
+
+  if (Number.isNaN(lat) || Number.isNaN(lng)) {
+    return res.status(400).json({ error: 'Provide numeric ?lat= and ?lng=' });
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return res.status(400).json({ error: 'lat must be -90..90 and lng -180..180' });
+  }
+
+  try {
+    // Exact: which district polygon contains this point?
+    const exact = await pool.query(
+      `SELECT district, state
+       FROM district_boundaries
+       WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+       LIMIT 1`,
+      [lng, lat]
+    );
+    if (exact.rows.length) {
+      return res.json({ lat, lng, ...exact.rows[0], exact: true });
+    }
+
+    // Fallback: nearest district boundary (offshore / border points).
+    const nearest = await pool.query(
+      `SELECT district, state
+       FROM district_boundaries
+       ORDER BY geom <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)
+       LIMIT 1`,
+      [lng, lat]
+    );
+    if (nearest.rows.length) {
+      return res.json({ lat, lng, ...nearest.rows[0], exact: false });
+    }
+
+    return res.status(404).json({ error: 'No district found' });
+  } catch (err) {
+    Sentry.captureException(err);
+    console.error('Reverse-geocode error:', err);
+    res.status(500).json({ error: 'Reverse geocode failed' });
+  }
+});
+// -------------------
 // SENTRY ERROR HANDLER — must be after all routes, before starting the server.
 // No-op unless SENTRY_DSN is configured.
 // -------------------
