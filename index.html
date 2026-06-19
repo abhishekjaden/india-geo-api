@@ -571,6 +571,180 @@
     <div class="addr-result" id="addrResult"></div>
   </section>
 
+ 
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H"
+        crossorigin="" />
+  <style>
+    .map-section { margin-top: 44px; }
+    .map-toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .map-hint { font-size: 11px; color: var(--text-muted); letter-spacing: 0.02em; }
+    .geo-locate-btn {
+      font-family: 'DM Mono', monospace; font-size: 11px;
+      padding: 7px 14px; border-radius: 20px; cursor: pointer;
+      border: 1px solid var(--navy-border); color: var(--text-dim);
+      background: transparent; transition: all 0.2s; letter-spacing: 0.03em;
+    }
+    .geo-locate-btn:hover { border-color: rgba(255,107,26,0.45); color: var(--saffron); }
+    .geo-locate-btn:disabled { opacity: 0.5; cursor: default; }
+
+    #map {
+      height: 380px; width: 100%;
+      border: 1px solid var(--navy-border); border-radius: 14px;
+      overflow: hidden; background: var(--navy-mid); z-index: 1;
+    }
+    .leaflet-container { background: var(--navy-mid); font-family: 'DM Mono', monospace; }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+      background: var(--navy-card); color: var(--text); border: 1px solid var(--navy-border);
+    }
+    .leaflet-popup-content { font-family: 'DM Mono', monospace; font-size: 12px; line-height: 1.5; }
+    .leaflet-popup-content b { font-family: 'Syne', sans-serif; color: var(--saffron); }
+    .leaflet-bar a { background: var(--navy-card); color: var(--text); border-color: var(--navy-border); }
+    .leaflet-bar a:hover { background: #182238; color: var(--saffron); }
+
+    .geo-result { margin-top: 14px; display: none; }
+    .geo-result.visible { display: block; }
+    .geo-card {
+      padding: 14px 18px; background: var(--navy-card);
+      border: 1px solid var(--navy-border); border-radius: 14px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .geo-icon {
+      width: 38px; height: 38px; flex-shrink: 0; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center; font-size: 17px;
+      background: rgba(255,107,26,0.1); border: 1px solid rgba(255,107,26,0.2);
+    }
+    .geo-place { flex: 1; min-width: 0; }
+    .geo-name { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 15px; color: var(--text); }
+    .geo-coords {
+      font-size: 11px; color: var(--text-dim); margin-top: 4px;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .geo-badge {
+      display: inline-block; padding: 2px 9px; border-radius: 999px;
+      font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700;
+      font-family: 'Syne', sans-serif;
+    }
+    .geo-badge.ok   { background: rgba(19,136,8,0.15);  color: #4DB840; border: 1px solid rgba(19,136,8,0.3); }
+    .geo-badge.near { background: rgba(255,179,71,0.15); color: #FFB347; border: 1px solid rgba(255,179,71,0.3); }
+    .geo-loading { color: var(--text-muted); font-size: 12px; }
+
+    @media (max-width: 600px) {
+      #map { height: 300px; }
+      .map-toolbar { gap: 8px; }
+    }
+  </style>
+
+  <section class="map-section">
+    <span class="search-label">// reverse geocode</span>
+    <div class="map-toolbar">
+      <span class="map-hint">Click anywhere on the map to find its district &amp; state.</span>
+      <button id="geoLocateBtn" class="geo-locate-btn">📍 Use my location</button>
+    </div>
+    <div id="map"></div>
+    <div class="geo-result" id="geoResult"></div>
+  </section>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH"
+          crossorigin=""></script>
+  <script>
+  (function () {
+    const GEO_API = 'https://india-geo-api-1.onrender.com';
+    const geoResult = document.getElementById('geoResult');
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    const geoMap = L.map('map').setView([22.5, 80], 5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      subdomains: 'abcd', maxZoom: 19
+    }).addTo(geoMap);
+
+    let geoMarker = null;
+
+    function renderGeo(d) {
+      const badge = d.exact
+        ? '<span class="geo-badge ok">\u2713 exact match</span>'
+        : '<span class="geo-badge near">nearest district</span>';
+      geoResult.className = 'geo-result visible';
+      geoResult.innerHTML = `
+        <div class="geo-card">
+          <div class="geo-icon">📍</div>
+          <div class="geo-place">
+            <div class="geo-name">${esc(d.district)}, ${esc(d.state)}</div>
+            <div class="geo-coords"><span>${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}</span> ${badge}</div>
+          </div>
+        </div>`;
+      const ll = [d.lat, d.lng];
+      if (geoMarker) {
+        geoMarker.setLatLng(ll);
+      } else {
+        geoMarker = L.circleMarker(ll, {
+          radius: 8, color: '#FF6B1A', weight: 2, fillColor: '#FF6B1A', fillOpacity: 0.55
+        }).addTo(geoMap);
+      }
+      geoMarker.bindPopup(`<b>${esc(d.district)}</b><br>${esc(d.state)}${d.exact ? '' : ' \u00b7 nearest'}`).openPopup();
+    }
+
+    async function reverseGeocode(lat, lng) {
+      geoResult.className = 'geo-result visible';
+      geoResult.innerHTML = '<div class="geo-card"><span class="geo-loading">Locating\u2026</span></div>';
+      try {
+        const res = await fetch(`${GEO_API}/reverse-geocode?lat=${lat}&lng=${lng}`);
+        const data = await res.json();
+        if (!res.ok) {
+          geoResult.innerHTML = `<div class="geo-card"><span class="geo-loading">${esc(data.error || 'Lookup failed.')}</span></div>`;
+          return;
+        }
+        renderGeo(data);
+      } catch (err) {
+        geoResult.innerHTML = '<div class="geo-card"><span class="geo-loading">Could not reach the API. Check your connection.</span></div>';
+      }
+    }
+
+    geoMap.on('click', e => {
+      reverseGeocode(+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6));
+    });
+
+    const geoLocateBtn = document.getElementById('geoLocateBtn');
+    geoLocateBtn.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        geoResult.className = 'geo-result visible';
+        geoResult.innerHTML = '<div class="geo-card"><span class="geo-loading">Geolocation is not available in this browser.</span></div>';
+        return;
+      }
+      const original = geoLocateBtn.textContent;
+      geoLocateBtn.disabled = true;
+      geoLocateBtn.textContent = 'Locating\u2026';
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const { latitude, longitude } = pos.coords;
+          geoMap.setView([latitude, longitude], 9);
+          reverseGeocode(+latitude.toFixed(6), +longitude.toFixed(6));
+          geoLocateBtn.disabled = false;
+          geoLocateBtn.textContent = original;
+        },
+        () => {
+          geoResult.className = 'geo-result visible';
+          geoResult.innerHTML = '<div class="geo-card"><span class="geo-loading">Could not get your location (permission denied or unavailable).</span></div>';
+          geoLocateBtn.disabled = false;
+          geoLocateBtn.textContent = original;
+        }
+      );
+    });
+  })();
+  </script>
+ 
+
 <!-- ANALYTICS -->
   <section class="analytics-section">
     <span class="search-label">// analytics</span>
