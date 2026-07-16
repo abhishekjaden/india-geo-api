@@ -1,4 +1,4 @@
-node_modules
-.envnode_modules/
-dists11.geojson
+node_modules/
 .env
+dists11.geojson
+.ipynb_checkpoints/
