@@ -9,6 +9,8 @@ and coordinate reverse-geocoding.
 🔌 **API base:** https://india-geo-api-1.onrender.com
 📖 **API docs (Swagger UI):** https://india-geo-api-1.onrender.com/api-docs
 
+![India Geo API demo](assets/demo.gif)
+
 ---
 
 ## Features
