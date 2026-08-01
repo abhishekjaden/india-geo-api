@@ -13,6 +13,7 @@ const swaggerUi = require('swagger-ui-express');
 const Sentry = require('@sentry/node');
 const { answerQuestion } = require('./ask');
 const { parseAddress } = require('./parse-address');
+const { searchMultilingual } = require('./multilingual');
 const openapiSpec = require('./openapi');
 const logger = pino();
 const app = express();
@@ -366,6 +367,30 @@ app.get('/reverse-geocode', async (req, res) => {
 // SENTRY ERROR HANDLER — must be after all routes, before starting the server.
 // No-op unless SENTRY_DSN is configured.
 // -------------------
+
+// -------------------
+// 🌐 MULTILINGUAL SEARCH — find villages by name in any Indian script
+// A Tamil/Devanagari/etc. query is transliterated to Latin, folded to a
+// phonetic key, and matched against the trigram-indexed phonetic_key column.
+// -------------------
+app.get('/search-multilingual', async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) {
+    return res.json({ query: q || '', script: null, results: [] });
+  }
+  if (q.length > 60) {
+    return res.status(400).json({ error: 'Query too long' });
+  }
+  try {
+    const result = await searchMultilingual(q.trim(), pool);
+    res.json(result);
+  } catch (err) {
+    Sentry.captureException(err);
+    console.error('Multilingual search error:', err);
+    res.status(500).json({ error: 'Multilingual search failed' });
+  }
+});
+
 Sentry.setupExpressErrorHandler(app);
 // -------------------
 // START SERVER

@@ -60,3 +60,5 @@ jobs:
 
       - name: Run integration tests
         run: node --test integration.test.js
+      - name: Run multilingual tests
+        run: node --test multilingual.test.js

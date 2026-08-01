@@ -174,6 +174,58 @@ module.exports = {
         },
       },
     },
+    '/search-multilingual': {
+      get: {
+        tags: ['Search'],
+        summary: 'Cross-script village search',
+        description:
+          'Finds villages by name written in any supported Indian script (Tamil, ' +
+          'Devanagari, Bengali, Telugu, Kannada, Malayalam, Gujarati, Gurmukhi, Oriya) ' +
+          'or in Latin. The query is transliterated to Latin, folded to a phonetic key ' +
+          'that neutralises romanisation differences (Tittakudi / Thittakkudi), and ' +
+          'matched against a trigram-indexed generated column.',
+        parameters: [
+          {
+            name: 'q',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', minLength: 2, maxLength: 60 },
+            example: 'மங்களூர்',
+          },
+        ],
+        responses: {
+          200: {
+            description: 'Matching villages',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    query:  { type: 'string' },
+                    script: { type: 'string', nullable: true, example: 'tamil' },
+                    latin:  { type: 'string' },
+                    key:    { type: 'string' },
+                    results: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          label: { type: 'string' },
+                          value: { type: 'string' },
+                          score: { type: 'number' },
+                          exact_phonetic: { type: 'boolean' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Query too long' },
+        },
+      },
+    },
 '/reverse-geocode': {
       get: {
         tags: ['Search'],
