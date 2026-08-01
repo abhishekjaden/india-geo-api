@@ -137,12 +137,13 @@ test('prefix matches are ranked above mid-string matches', async () => {
 
 // --------------------------------------------------------- schema integrity
 
-test('the trigram GIN index exists', async () => {
+test('the trigram GIN index on villages.name exists', async () => {
   const { rows } = await pool.query(
     `SELECT indexdef FROM pg_indexes
-     WHERE tablename = 'villages' AND indexdef ILIKE '%gin%' AND indexdef ILIKE '%trgm%'`
+     WHERE tablename = 'villages' AND indexdef ILIKE '%gin%' AND indexdef ILIKE '%trgm%'
+       AND indexdef ILIKE '%(name %'`
   );
-  assert.strictEqual(rows.length, 1, 'expected exactly one trigram GIN index on villages');
+  assert.strictEqual(rows.length, 1, 'expected a trigram GIN index on villages.name');
 });
 
 test('the PostGIS GiST index exists', async () => {
