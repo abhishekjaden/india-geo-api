@@ -6,10 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test server.test.js",
-    "migrate": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js",
-    "migrate:up": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up",
-    "migrate:down": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js down",
-    "seed": "node seed.js final_india_villages.csv"
+    "seed": "node seed.js final_india_villages.csv",
+    "migrate":      "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js",
+    "migrate:up":   "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js up",
+    "migrate:down": "node -r dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js down"
   },
   "keywords": [],
   "author": "",
