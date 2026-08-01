@@ -2,3 +2,4 @@ node_modules/
 .env
 dists11.geojson
 .ipynb_checkpoints/
+final_india_villages.csv
