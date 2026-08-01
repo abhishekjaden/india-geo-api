@@ -7,20 +7,55 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  # Fast, dependency-free contract tests (no database needed).
+  contract-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
 
-      - name: Install dependencies
-        run: npm ci
+  # Integration tests against a real PostgreSQL + PostGIS instance.
+  # The migrations build the schema from scratch, which also proves they work.
+  integration-tests:
+    runs-on: ubuntu-latest
 
-      - name: Run tests
-        run: npm test
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: geo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/geo_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/geo_test
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Building the schema from the migrations is itself a test: if a migration
+      # is broken, CI fails here.
+      - name: Apply migrations
+        run: npm run migrate:up
+
+      - name: Run integration tests
+        run: node --test integration.test.js
