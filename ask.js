@@ -54,6 +54,8 @@ function joinUpTo(target, ancestor) {
 
 // Turn a validated intent into { sql, params }, or null if unsupported.
 function buildQuery(intent) {
+  // Defensive: the model can return null or a non-object even under a schema.
+  if (!intent || typeof intent !== 'object') return null;
   const { action, target, filter_level, filter_name, name_prefix, group_level, order } = intent;
   if (!HIER[target]) return null;
 
