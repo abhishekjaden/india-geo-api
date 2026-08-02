@@ -76,8 +76,15 @@ function phoneticKey(s) {
 }
 
 /**
- * Search villages by name in any supported script.
- * Returns { query, script, latin, key, results }.
+ * Search the whole hierarchy by name in any supported script.
+ *
+ * Every level carries the same generated phonetic_key, so one UNION query can
+ * rank across all four. Ranking is deliberately level-aware: a district called
+ * Chennai should beat a village that merely sounds like it, because a user
+ * typing a well-known name almost always means the larger place. Within a
+ * level, exact phonetic matches come first, then trigram similarity, and ties
+ * are broken by raw string similarity to the transliterated name so that
+ * "Chinai" outranks "Ghinoi".
  */
 async function searchMultilingual(rawQuery, pool, limit = 10) {
   const query = String(rawQuery || '').trim();
@@ -90,25 +97,45 @@ async function searchMultilingual(rawQuery, pool, limit = 10) {
   // Very short keys carry too little signal for fuzzy matching — a 3-character
   // key matches half the country. Require an exact phonetic match instead.
   const shortKey = key.length < 4;
+  const match = shortKey ? 'phonetic_key = $1' : 'phonetic_key % $1';
 
-  // Rank exact phonetic matches first, then trigram-similar keys. The
-  // phonetic_key column is generated and trigram-indexed, so this stays fast.
-  const { rows } = await pool.query(
-    `SELECT v.name AS village,
-            sd.name AS subdistrict,
-            d.name  AS district,
-            s.name  AS state,
-            similarity(v.phonetic_key, $1) AS score,
-            (v.phonetic_key = $1) AS exact_phonetic
-     FROM villages v
-     JOIN subdistricts sd ON v.subdistrict_id = sd.id
-     JOIN districts    d  ON sd.district_id   = d.id
-     JOIN states       s  ON d.state_id       = s.id
-     WHERE ${shortKey ? 'v.phonetic_key = $1' : 'v.phonetic_key % $1'}
-     ORDER BY exact_phonetic DESC, score DESC
-     LIMIT $2`,
-    [key, limit]
-  );
+  // Latin form stripped to plain ascii, for the tie-break similarity.
+  const plainLatin = String(latin)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f\u0331\u0323\u0324]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+
+  const sql = `
+    WITH hits AS (
+      SELECT 'state' AS level, 4 AS level_rank, s.id, s.name,
+             NULL::text AS parent, NULL::text AS grandparent, s.phonetic_key
+      FROM states s WHERE s.${match}
+      UNION ALL
+      SELECT 'district', 3, d.id, d.name, s.name, NULL::text, d.phonetic_key
+      FROM districts d JOIN states s ON d.state_id = s.id WHERE d.${match}
+      UNION ALL
+      SELECT 'subdistrict', 2, sd.id, sd.name, d.name, s.name, sd.phonetic_key
+      FROM subdistricts sd
+      JOIN districts d ON sd.district_id = d.id
+      JOIN states s ON d.state_id = s.id
+      WHERE sd.${match}
+      UNION ALL
+      SELECT 'village', 1, v.id, v.name, sd.name, d.name, v.phonetic_key
+      FROM villages v
+      JOIN subdistricts sd ON v.subdistrict_id = sd.id
+      JOIN districts d ON sd.district_id = d.id
+      WHERE v.${match}
+    )
+    SELECT level, name, parent, grandparent,
+           similarity(phonetic_key, $1) AS score,
+           (phonetic_key = $1) AS exact_phonetic,
+           similarity(lower(name), $3) AS name_score
+    FROM hits
+    ORDER BY exact_phonetic DESC, level_rank DESC, score DESC, name_score DESC
+    LIMIT $2`;
+
+  const { rows } = await pool.query(sql, [key, limit, plainLatin]);
 
   return {
     query,
@@ -116,8 +143,10 @@ async function searchMultilingual(rawQuery, pool, limit = 10) {
     latin,
     key,
     results: rows.map((r) => ({
-      label: `${r.village}, ${r.subdistrict}, ${r.district}, ${r.state}`,
-      value: r.village,
+      level: r.level,
+      name: r.name,
+      label: [r.name, r.parent, r.grandparent].filter(Boolean).join(', '),
+      value: r.name,
       score: Number(r.score),
       exact_phonetic: r.exact_phonetic,
     })),
