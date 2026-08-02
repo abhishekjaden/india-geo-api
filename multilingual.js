@@ -64,7 +64,12 @@ function phoneticKey(s) {
   x = x
     .replace(/[dgbjzxvq]/g, (c) => ({ d: 't', g: 'k', b: 'p', j: 'c', z: 's', x: 's', v: 'w', q: 'k' }[c]))
     .replace(/c/g, 'k')           // c and k are interchangeable in practice
-    .replace(/[aeiou]+/g, 'a')    // vowels carry little signal across schemes
+    // Two vowel classes, not one. Collapsing every vowel to a single letter
+    // destroyed short names ("Chennai" -> "kana", colliding with Ghana/Khani).
+    // Front (e/i) and back (a/o/u) keep enough signal to separate them while
+    // still absorbing romanisation differences.
+    .replace(/[ei]+/g, 'i')
+    .replace(/[aou]+/g, 'a')
     .replace(/(.)\1+/g, '$1');    // collapse runs
 
   return x;
@@ -82,6 +87,10 @@ async function searchMultilingual(rawQuery, pool, limit = 10) {
   const key = phoneticKey(latin);
   if (!key) return { query, script, latin, key, results: [] };
 
+  // Very short keys carry too little signal for fuzzy matching — a 3-character
+  // key matches half the country. Require an exact phonetic match instead.
+  const shortKey = key.length < 4;
+
   // Rank exact phonetic matches first, then trigram-similar keys. The
   // phonetic_key column is generated and trigram-indexed, so this stays fast.
   const { rows } = await pool.query(
@@ -95,7 +104,7 @@ async function searchMultilingual(rawQuery, pool, limit = 10) {
      JOIN subdistricts sd ON v.subdistrict_id = sd.id
      JOIN districts    d  ON sd.district_id   = d.id
      JOIN states       s  ON d.state_id       = s.id
-     WHERE v.phonetic_key % $1
+     WHERE ${shortKey ? 'v.phonetic_key = $1' : 'v.phonetic_key % $1'}
      ORDER BY exact_phonetic DESC, score DESC
      LIMIT $2`,
     [key, limit]

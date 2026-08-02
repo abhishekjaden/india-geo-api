@@ -29,6 +29,15 @@ test('romanisation variants fold to the same key', () => {
   assert.strictEqual(phoneticKey('Chennai'), phoneticKey('Cennai'));
 });
 
+test('short names keep enough signal to stay distinct (v2 folding)', () => {
+  // Regression: v1 folded every vowel to 'a', so "Chennai" became "kana" and
+  // collided with Ghana, Khani, Kuni and Jana. Front/back vowel classes fix it.
+  const chennai = phoneticKey('Chennai');
+  for (const other of ['Ghana', 'Khani', 'Kuni', 'Jana', 'Kauna']) {
+    assert.notStrictEqual(chennai, phoneticKey(other), `Chennai must not fold to ${other}`);
+  }
+});
+
 test('genuinely different names do not collide', () => {
   assert.notStrictEqual(phoneticKey('Mangalore'), phoneticKey('Kalpetta'));
   assert.notStrictEqual(phoneticKey('Chennai'), phoneticKey('Mumbai'));
@@ -95,6 +104,17 @@ if (!dbUrl) {
   test('a misspelled Latin query still matches', async () => {
     const r = await searchMultilingual('mangalor', pool, 5);
     assert.ok(r.results.some((x) => x.value === 'Mangalore'));
+  });
+
+  test('a Devanagari query for Chennai does not return unrelated villages', async () => {
+    // Regression for the v1 folding bug: this used to return Ghana/Khani/Kuni.
+    await pool.query(
+      `INSERT INTO villages(subdistrict_id,name) VALUES(1,'Chennai'),(1,'Ghana'),(1,'Khani')`
+    );
+    const r = await searchMultilingual('चेन्नई', pool, 5);
+    const names = r.results.map((x) => x.value);
+    assert.ok(!names.includes('Ghana'), 'Ghana must not match a Chennai query');
+    assert.ok(!names.includes('Khani'), 'Khani must not match a Chennai query');
   });
 
   test('nonsense input returns no results rather than throwing', async () => {
