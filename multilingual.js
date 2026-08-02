@@ -72,7 +72,12 @@ function phoneticKey(s) {
     .replace(/[aou]+/g, 'a')
     .replace(/(.)\1+/g, '$1');    // collapse runs
 
-  return x;
+  // Final-vowel insensitivity. Indic scripts carry an inherent trailing vowel
+  // that English romanisation drops: "कुड्डलोर" -> kuddalora, but the census
+  // spells it "Cuddalore". Without this the two keys differ by one character
+  // and the query matches the wrong place exactly.
+  const trimmed = x.replace(/[ai]+$/, '');
+  return trimmed || x;
 }
 
 /**
@@ -127,12 +132,23 @@ async function searchMultilingual(rawQuery, pool, limit = 10) {
       JOIN districts d ON sd.district_id = d.id
       WHERE v.${match}
     )
-    SELECT level, name, parent, grandparent,
-           similarity(phonetic_key, $1) AS score,
-           (phonetic_key = $1) AS exact_phonetic,
-           similarity(lower(name), $3) AS name_score
-    FROM hits
-    ORDER BY exact_phonetic DESC, level_rank DESC, score DESC, name_score DESC
+    SELECT * FROM (
+      SELECT level, name, parent, grandparent,
+             similarity(phonetic_key, $1) AS score,
+             (phonetic_key = $1) AS exact_phonetic,
+             similarity(lower(name), $3) AS name_score,
+             level_rank
+      FROM hits
+    ) scored
+    -- Blended relevance, chosen by measuring candidate formulas against a
+    -- labelled set of real queries (see benchmarks/ranking-evaluation.md):
+    --   phonetic similarity 0.55 — the cross-script signal
+    --   raw name similarity 0.30 — keeps an exactly-typed name on top
+    --   hierarchy level      0.15 — a district beats a village that merely
+    --                               sounds alike, without overriding a
+    --                               genuinely better textual match
+    ORDER BY (0.55 * score + 0.30 * name_score + 0.15 * (level_rank / 4.0)) DESC,
+             exact_phonetic DESC
     LIMIT $2`;
 
   const { rows } = await pool.query(sql, [key, limit, plainLatin]);

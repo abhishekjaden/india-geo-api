@@ -22,6 +22,14 @@ test('transliterates Indic scripts to Latin, leaves Latin alone', () => {
 });
 
 // ------------------------------------------------------------ phonetic folding
+test('final-vowel differences do not break matching (v3)', () => {
+  // Indic scripts add an inherent trailing vowel English drops:
+  // कुड्डलोर -> "kuddalora" vs the census spelling "Cuddalore".
+  assert.strictEqual(phoneticKey('Cuddalore'), phoneticKey('kuddalora'));
+  assert.strictEqual(phoneticKey('Mangalore'), phoneticKey('Mangalur'));
+  assert.strictEqual(phoneticKey('Kerala'), phoneticKey('kerala'));
+});
+
 test('romanisation variants fold to the same key', () => {
   // The classic problem: the same place spelled several ways.
   assert.strictEqual(phoneticKey('Tittakudi'), phoneticKey('Thittakkudi'));
@@ -158,6 +166,16 @@ if (!dbUrl) {
   test('a village-only name still resolves to the village', async () => {
     const r = await searchMultilingual('மங்களூர்', pool, 5);
     assert.ok(r.results.some((x) => x.level === 'village' && x.name === 'Mangalore'));
+  });
+
+  test('an exactly-typed village name is not overridden by a district', async () => {
+    // Guards against over-weighting hierarchy level: searching a village name
+    // verbatim must still return that village first.
+    await pool.query(`INSERT INTO villages(subdistrict_id,name) VALUES(1,'Kudaluru')`);
+    await pool.query(`INSERT INTO districts(state_id,name) VALUES(1,'Cuddalore2')`);
+    const r = await searchMultilingual('Kudaluru', pool, 5);
+    assert.strictEqual(r.results[0].name, 'Kudaluru');
+    assert.strictEqual(r.results[0].level, 'village');
   });
 
   test('teardown', async () => {
