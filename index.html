@@ -745,6 +745,172 @@
   </script>
  
 
+  <!-- Cross-script multilingual search -->
+  <style>
+    .ml-section { margin-top: 44px; }
+    .ml-wrap { position: relative; display: flex; gap: 8px; }
+    #mlInput {
+      flex: 1; min-width: 0; padding: 18px 18px 18px 18px;
+      background: var(--navy-card); border: 1px solid var(--navy-border);
+      border-radius: 14px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 15px;
+      outline: none; transition: all 0.3s; caret-color: var(--saffron);
+    }
+    #mlInput::placeholder { color: var(--text-muted); }
+    #mlInput:focus {
+      border-color: rgba(255,107,26,0.5);
+      box-shadow: 0 0 0 3px rgba(255,107,26,0.1), 0 8px 32px rgba(0,0,0,0.4);
+      background: #162034;
+    }
+    .ml-btn {
+      flex-shrink: 0; padding: 0 24px;
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px;
+      letter-spacing: 0.02em; color: var(--navy);
+      background: linear-gradient(135deg, var(--saffron), #FFB347);
+      border: none; border-radius: 14px; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+    }
+    .ml-btn:hover { box-shadow: 0 6px 24px rgba(255,107,26,0.3); transform: translateY(-1px); }
+    .ml-btn:active { transform: translateY(0); }
+    .ml-btn:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+
+    .ml-samples { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .ml-sample {
+      font-family: 'DM Mono', monospace; font-size: 12px;
+      padding: 5px 14px; border-radius: 20px; cursor: pointer;
+      border: 1px solid var(--navy-border); color: var(--text-dim);
+      background: transparent; transition: all 0.2s;
+    }
+    .ml-sample:hover { border-color: rgba(255,107,26,0.4); color: var(--saffron); }
+
+    .ml-meta {
+      margin-top: 14px; font-size: 11px; color: var(--text-muted);
+      display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .ml-meta.visible { display: flex; }
+    .ml-chip {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      background: rgba(255,107,26,0.1); border: 1px solid rgba(255,107,26,0.25);
+      color: var(--saffron); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .ml-meta code { color: var(--text-dim); }
+
+    .ml-results { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .ml-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; background: var(--navy-card);
+      border: 1px solid var(--navy-border); border-radius: 12px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .ml-row:hover { border-color: rgba(255,107,26,0.3); background: #162034; }
+    .ml-level {
+      flex: 0 0 auto; min-width: 84px; text-align: center;
+      font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 4px; font-family: 'Syne', sans-serif; font-weight: 700;
+    }
+    .ml-level.state       { background: rgba(255,107,26,0.15); color: var(--saffron); border: 1px solid rgba(255,107,26,0.3); }
+    .ml-level.district    { background: rgba(255,179,71,0.13); color: #FFB347; border: 1px solid rgba(255,179,71,0.3); }
+    .ml-level.subdistrict { background: rgba(19,136,8,0.13);  color: #4DB840; border: 1px solid rgba(19,136,8,0.3); }
+    .ml-level.village     { background: rgba(107,122,158,0.13); color: var(--text-dim); border: 1px solid var(--navy-border); }
+    .ml-name { flex: 1; min-width: 0; }
+    .ml-name-main { font-family: 'Syne', sans-serif; font-weight: 600; font-size: 14px; color: var(--text); }
+    .ml-name-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .ml-score { flex: 0 0 auto; font-size: 11px; color: var(--text-muted); }
+    .ml-exact { color: #4DB840; }
+    .ml-empty, .ml-loading { color: var(--text-muted); font-size: 12px; padding: 8px 0; }
+
+    @media (max-width: 600px) {
+      .ml-btn { padding: 0 18px; }
+      .ml-level { min-width: 68px; }
+    }
+  </style>
+
+  <section class="ml-section">
+    <span class="search-label">// search in any indian script</span>
+    <div class="ml-wrap">
+      <input type="text" id="mlInput" placeholder="Try மங்களூர், कुड्डलोर, or केरल…" autocomplete="off" spellcheck="false"/>
+      <button id="mlBtn" class="ml-btn">Search</button>
+    </div>
+    <div class="ml-samples">
+      <button class="ml-sample" data-q="மங்களூர்">மங்களூர் (Tamil)</button>
+      <button class="ml-sample" data-q="कुड्डलोर">कुड्डलोर (Devanagari)</button>
+      <button class="ml-sample" data-q="केरल">केरल (Devanagari)</button>
+    </div>
+    <div class="ml-meta" id="mlMeta"></div>
+    <div class="ml-results" id="mlResults"></div>
+  </section>
+
+  <script>
+  (function () {
+    const ML_API = 'https://india-geo-api-1.onrender.com';
+    const mlInput = document.getElementById('mlInput');
+    const mlBtn = document.getElementById('mlBtn');
+    const mlMeta = document.getElementById('mlMeta');
+    const mlResults = document.getElementById('mlResults');
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    }
+
+    function render(data) {
+      const script = data.script || 'latin';
+      mlMeta.className = 'ml-meta visible';
+      mlMeta.innerHTML =
+        `<span class="ml-chip">${esc(script)}</span>` +
+        `<span>transliterated: <code>${esc(data.latin || '')}</code></span>` +
+        `<span>phonetic key: <code>${esc(data.key || '')}</code></span>`;
+
+      if (!data.results || !data.results.length) {
+        mlResults.innerHTML = '<div class="ml-empty">No matches found.</div>';
+        return;
+      }
+
+      mlResults.innerHTML = data.results.map(r => `
+        <div class="ml-row">
+          <span class="ml-level ${esc(r.level)}">${esc(r.level)}</span>
+          <div class="ml-name">
+            <div class="ml-name-main">${esc(r.name)}</div>
+            <div class="ml-name-sub">${esc(r.label)}</div>
+          </div>
+          <span class="ml-score${r.exact_phonetic ? ' ml-exact' : ''}">
+            ${r.exact_phonetic ? '\u2713 exact' : Math.round(r.score * 100) + '%'}
+          </span>
+        </div>`).join('');
+    }
+
+    async function runSearch() {
+      const q = mlInput.value.trim();
+      if (q.length < 2) return;
+      mlBtn.disabled = true;
+      mlMeta.className = 'ml-meta';
+      mlResults.innerHTML = '<div class="ml-loading">Searching\u2026</div>';
+      try {
+        const res = await fetch(`${ML_API}/search-multilingual?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!res.ok) {
+          mlResults.innerHTML = `<div class="ml-empty">${esc(data.error || 'Search failed.')}</div>`;
+          return;
+        }
+        render(data);
+      } catch (err) {
+        mlResults.innerHTML = '<div class="ml-empty">Could not reach the API. Check your connection.</div>';
+      } finally {
+        mlBtn.disabled = false;
+      }
+    }
+
+    mlBtn.addEventListener('click', runSearch);
+    mlInput.addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+    document.querySelectorAll('.ml-sample').forEach(b => {
+      b.addEventListener('click', () => { mlInput.value = b.dataset.q; runSearch(); });
+    });
+  })();
+  </script>
+  <!-- end multilingual search -->
+
+
 <!-- ANALYTICS -->
   <section class="analytics-section">
     <span class="search-label">// analytics</span>
